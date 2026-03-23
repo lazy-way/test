@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:apps.apple.com)",
+      "WebFetch(domain:www.jindoblu.com)",
+      "WebFetch(domain:1-2-3-4-player-games.en.uptodown.com)",
+      "WebFetch(domain:apkpure.com)",
+      "WebFetch(domain:play.google.com)",
+      "Bash(flutter --version)",
+      "Bash(brew install:*)",
+      "Read(//Users/ketan/Documents/test-projects/test-apps/**)",
+      "Bash(flutter create:*)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(find /Users/ketan/Documents/test-projects/test-apps/minigames -path */flame/*/events* -name *.dart)",
+      "Bash(find lib:*)"
+    ]
+  }
+}
