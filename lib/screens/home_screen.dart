@@ -60,33 +60,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Spacer(flex: 2),
-                  // Title numbers
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (i) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Text(
-                        '${i + 1}',
-                        style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
-                          fontSize: 56,
-                          color: AppTheme.playerColors[i],
-                          shadows: [
-                            Shadow(
-                              color: AppTheme.playerColors[i].withValues(alpha: 0.5),
-                              blurRadius: 15,
-                            ),
-                          ],
-                        ),
-                      ),
-                    )),
-                  ),
-                  const SizedBox(height: 4),
+                  // Title
                   Text(
                     'MINI GAMES',
                     style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
-                      fontSize: 28,
-                      color: Colors.white.withValues(alpha: 0.9),
-                      letterSpacing: 6,
+                      fontSize: 42,
+                      color: Colors.white,
+                      letterSpacing: 4,
+                      shadows: [
+                        const Shadow(
+                          color: Color(0x80FFFFFF),
+                          blurRadius: 20,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 8),

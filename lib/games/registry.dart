@@ -51,7 +51,7 @@ class GameRegistry {
       icon: Icons.sports_basketball,
       category: GameCategory.sports,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFF9F43),
     ),
 
@@ -63,7 +63,7 @@ class GameRegistry {
       icon: Icons.gps_fixed,
       category: GameCategory.action,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFF6B6B),
     ),
     GameConfig(
@@ -73,7 +73,7 @@ class GameRegistry {
       icon: Icons.sports_martial_arts,
       category: GameCategory.action,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFFE66D),
     ),
     GameConfig(
@@ -83,7 +83,7 @@ class GameRegistry {
       icon: Icons.content_cut,
       category: GameCategory.action,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFF6348),
     ),
 
@@ -95,7 +95,7 @@ class GameRegistry {
       icon: Icons.directions_car,
       category: GameCategory.racing,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFF4757),
     ),
     GameConfig(
@@ -105,7 +105,7 @@ class GameRegistry {
       icon: Icons.sailing,
       category: GameCategory.racing,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFF0984E3),
     ),
     GameConfig(
@@ -115,7 +115,7 @@ class GameRegistry {
       icon: Icons.skateboarding,
       category: GameCategory.racing,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFA29BFE),
     ),
 
@@ -127,7 +127,7 @@ class GameRegistry {
       icon: Icons.palette,
       category: GameCategory.puzzle,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFA29BFE),
     ),
     GameConfig(
@@ -137,7 +137,7 @@ class GameRegistry {
       icon: Icons.grid_view_rounded,
       category: GameCategory.puzzle,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFF6C5CE7),
     ),
     GameConfig(
@@ -147,7 +147,7 @@ class GameRegistry {
       icon: Icons.view_column_rounded,
       category: GameCategory.puzzle,
       minPlayers: 1,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFD79A8),
     ),
 
@@ -159,7 +159,7 @@ class GameRegistry {
       icon: Icons.route,
       category: GameCategory.strategy,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFF2ED573),
     ),
     GameConfig(
@@ -169,7 +169,7 @@ class GameRegistry {
       icon: Icons.casino,
       category: GameCategory.strategy,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFFFF9FF3),
     ),
     GameConfig(
@@ -179,7 +179,7 @@ class GameRegistry {
       icon: Icons.grid_on,
       category: GameCategory.strategy,
       minPlayers: 2,
-      maxPlayers: 4,
+      maxPlayers: 2,
       accentColor: Color(0xFF54A0FF),
     ),
   ];

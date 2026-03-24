@@ -34,14 +34,15 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    final laneWidth = size.x / players.length;
+    final halfH = size.y / 2;
     boats = List.generate(players.length, (i) {
+      final zoneTop = i == 0 ? halfH : 0.0;
       return _Boat(
-        position: Vector2(laneWidth * i + laneWidth / 2, size.y * 0.8),
+        position: Vector2(size.x / 2, zoneTop + halfH * 0.8),
         color: players[i].color,
         playerId: i,
-        laneWidth: laneWidth,
-        laneX: laneWidth * i,
+        laneWidth: size.x,
+        laneX: 0,
       );
     });
   }
@@ -58,10 +59,11 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
     _spawnTimer += dt;
     if (_spawnTimer > 0.6) {
       _spawnTimer = 0;
-      final lane = _rng.nextInt(players.length);
-      final laneWidth = size.x / players.length;
+      final halfH = size.y / 2;
+      final halfIdx = _rng.nextInt(players.length); // 0 = bottom half, 1 = top half
+      final zoneTop = halfIdx == 0 ? halfH : 0.0;
       obstacles.add(_Obstacle(
-        position: Vector2(lane * laneWidth + laneWidth * 0.2 + _rng.nextDouble() * laneWidth * 0.6, -30),
+        position: Vector2(20 + _rng.nextDouble() * (size.x - 40), zoneTop - 30),
         width: 30 + _rng.nextDouble() * 20,
         height: 15 + _rng.nextDouble() * 10,
       ));
@@ -102,18 +104,20 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
     if (_gameOver) return;
     final pos = info.eventPosition.global;
 
-    for (int i = 0; i < boats.length; i++) {
-      if (!boats[i].alive) continue;
-      final laneWidth = size.x / players.length;
-      final laneLeft = laneWidth * i;
-      if (pos.x >= laneLeft && pos.x < laneLeft + laneWidth) {
-        // Move left or right within lane
-        if (pos.x < laneLeft + laneWidth / 2) {
-          boats[i].position.x = max(laneLeft + 15, boats[i].position.x - 25);
-        } else {
-          boats[i].position.x = min(laneLeft + laneWidth - 15, boats[i].position.x + 25);
-        }
-        break;
+    // Bottom half = player 0, top half = player 1
+    int playerIdx;
+    if (pos.y > size.y / 2) {
+      playerIdx = 0;
+    } else {
+      playerIdx = players.length > 1 ? 1 : 0;
+    }
+
+    if (playerIdx < boats.length && boats[playerIdx].alive) {
+      // Move left or right based on tap position
+      if (pos.x < size.x / 2) {
+        boats[playerIdx].position.x = max(15, boats[playerIdx].position.x - 25);
+      } else {
+        boats[playerIdx].position.x = min(size.x - 15, boats[playerIdx].position.x + 25);
       }
     }
   }
@@ -128,11 +132,10 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
       canvas.drawRect(Rect.fromLTWH(0, y, size.x, 2), wavePaint);
     }
 
-    // Lane dividers
+    // Half divider (horizontal line at y/2)
     final divPaint = Paint()..color = Colors.white.withValues(alpha: 0.1)..strokeWidth = 1;
-    final laneWidth = size.x / players.length;
-    for (int i = 1; i < players.length; i++) {
-      canvas.drawLine(Offset(laneWidth * i, 0), Offset(laneWidth * i, size.y), divPaint);
+    if (players.length > 1) {
+      canvas.drawLine(Offset(0, size.y / 2), Offset(size.x, size.y / 2), divPaint);
     }
 
     // Obstacles (logs)

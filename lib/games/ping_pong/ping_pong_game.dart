@@ -1,13 +1,12 @@
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
-import 'package:flame/collisions.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
 import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
-class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
+class PingPongGame extends FlameGame with MultiTouchDragDetector {
   final List<Player> players;
   final VoidCallback onGameEnd;
 
@@ -16,6 +15,7 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
   late List<int> scores;
   final int winScore = 5;
   bool _gameOver = false;
+  final Map<int, int> _dragToPlayer = {};
 
   PingPongGame({required this.players, required this.onGameEnd});
 
@@ -35,48 +35,41 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
     await super.onLoad();
     scores = List.filled(players.length, 0);
 
-    final paddleWidth = 12.0;
-    final paddleHeight = size.y * 0.2;
+    final paddleWidth = size.x * 0.25;
+    final paddleHeight = 12.0;
 
     paddles = [];
 
+    // Player 1 - bottom (horizontal paddle)
+    paddles.add(_Paddle(
+      position: Vector2(size.x / 2 - paddleWidth / 2, size.y - 40),
+      size: Vector2(paddleWidth, paddleHeight),
+      color: players[0].color,
+      isHorizontal: true,
+      minPos: 0,
+      maxPos: size.x - paddleWidth,
+    ));
+
     if (players.length >= 2) {
-      // Player 1 - left
+      // Player 2 - top (horizontal paddle)
       paddles.add(_Paddle(
-        position: Vector2(30, size.y / 2 - paddleHeight / 2),
-        size: Vector2(paddleWidth, paddleHeight),
-        color: players[0].color,
-        isVertical: true,
-        minPos: 0,
-        maxPos: size.y - paddleHeight,
-      ));
-      // Player 2 - right
-      paddles.add(_Paddle(
-        position: Vector2(size.x - 30 - paddleWidth, size.y / 2 - paddleHeight / 2),
+        position: Vector2(size.x / 2 - paddleWidth / 2, 28),
         size: Vector2(paddleWidth, paddleHeight),
         color: players[1].color,
-        isVertical: true,
+        isHorizontal: true,
         minPos: 0,
-        maxPos: size.y - paddleHeight,
+        maxPos: size.x - paddleWidth,
       ));
     } else {
-      // 1 player: player on left, AI on right
+      // AI - top
       paddles.add(_Paddle(
-        position: Vector2(30, size.y / 2 - paddleHeight / 2),
-        size: Vector2(paddleWidth, paddleHeight),
-        color: players[0].color,
-        isVertical: true,
-        minPos: 0,
-        maxPos: size.y - paddleHeight,
-      ));
-      paddles.add(_Paddle(
-        position: Vector2(size.x - 30 - paddleWidth, size.y / 2 - paddleHeight / 2),
+        position: Vector2(size.x / 2 - paddleWidth / 2, 28),
         size: Vector2(paddleWidth, paddleHeight),
         color: Colors.grey,
-        isVertical: true,
+        isHorizontal: true,
         isAI: true,
         minPos: 0,
-        maxPos: size.y - paddleHeight,
+        maxPos: size.x - paddleWidth,
       ));
     }
 
@@ -92,17 +85,15 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
 
     // Score displays
     add(_ScoreDisplay(
-      position: Vector2(size.x * 0.25, 40),
+      position: Vector2(size.x - 50, size.y * 0.75),
       scoreGetter: () => scores.isNotEmpty ? scores[0] : 0,
       color: players[0].color,
     ));
-    if (players.length >= 2) {
-      add(_ScoreDisplay(
-        position: Vector2(size.x * 0.75, 40),
-        scoreGetter: () => scores.length > 1 ? scores[1] : 0,
-        color: players[1].color,
-      ));
-    }
+    add(_ScoreDisplay(
+      position: Vector2(size.x - 50, size.y * 0.25 - 30),
+      scoreGetter: () => scores.length > 1 ? scores[1] : 0,
+      color: players.length > 1 ? players[1].color : Colors.grey,
+    ));
 
     _resetBall();
   }
@@ -111,7 +102,7 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
     ball.position = Vector2(size.x / 2, size.y / 2);
     final angle = (Random().nextDouble() - 0.5) * 0.8;
     final dir = Random().nextBool() ? 1.0 : -1.0;
-    ball.velocity = Vector2(dir * 300 * cos(angle), 300 * sin(angle));
+    ball.velocity = Vector2(300 * sin(angle), dir * 300 * cos(angle));
   }
 
   @override
@@ -122,49 +113,51 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
     // AI paddle
     for (final p in paddles) {
       if (p.isAI) {
-        final target = ball.position.y - p.size.y / 2;
-        final diff = target - p.position.y;
-        p.position.y += diff.clamp(-250 * dt, 250 * dt);
-        p.position.y = p.position.y.clamp(p.minPos, p.maxPos);
+        final target = ball.position.x - p.size.x / 2;
+        final diff = target - p.position.x;
+        p.position.x += diff.clamp(-250 * dt, 250 * dt);
+        p.position.x = p.position.x.clamp(p.minPos, p.maxPos);
       }
     }
 
     // Ball movement
     ball.position += ball.velocity * dt;
 
-    // Top/bottom bounce
-    if (ball.position.y <= 0 || ball.position.y >= size.y - ball.radius * 2) {
-      ball.velocity.y = -ball.velocity.y;
-      ball.position.y = ball.position.y.clamp(0, size.y - ball.radius * 2);
+    // Left/right wall bounce
+    if (ball.position.x <= 0 || ball.position.x >= size.x - ball.radius * 2) {
+      ball.velocity.x = -ball.velocity.x;
+      ball.position.x = ball.position.x.clamp(0, size.x - ball.radius * 2);
     }
 
     // Paddle collision
     for (int i = 0; i < paddles.length; i++) {
       final paddle = paddles[i];
       if (ball.toRect().overlaps(paddle.toRect())) {
-        ball.velocity.x = -ball.velocity.x;
+        ball.velocity.y = -ball.velocity.y;
         // Speed up
         ball.velocity *= 1.05;
         // Offset based on where ball hits paddle
-        final hitPos = (ball.position.y - paddle.position.y) / paddle.size.y;
-        ball.velocity.y += (hitPos - 0.5) * 200;
+        final hitPos = (ball.position.x - paddle.position.x) / paddle.size.x;
+        ball.velocity.x += (hitPos - 0.5) * 200;
         // Push ball out of paddle
         if (i == 0) {
-          ball.position.x = paddle.position.x + paddle.size.x + 1;
+          // Bottom paddle - push ball up
+          ball.position.y = paddle.position.y - ball.radius * 2 - 1;
         } else {
-          ball.position.x = paddle.position.x - ball.radius * 2 - 1;
+          // Top paddle - push ball down
+          ball.position.y = paddle.position.y + paddle.size.y + 1;
         }
       }
     }
 
     // Scoring
-    if (ball.position.x < 0) {
-      // Right player scores
+    if (ball.position.y > size.y) {
+      // Top player (player 2) scores
       if (scores.length > 1) scores[1]++;
       _checkWin();
       _resetBall();
-    } else if (ball.position.x > size.x) {
-      // Left player scores
+    } else if (ball.position.y < 0) {
+      // Bottom player (player 1) scores
       scores[0]++;
       _checkWin();
       _resetBall();
@@ -185,28 +178,39 @@ class PingPongGame extends FlameGame with PanDetector, HasCollisionDetection {
   }
 
   @override
-  void onPanUpdate(DragUpdateInfo info) {
+  void onDragStart(int pointerId, DragStartInfo info) {
     if (_gameOver) return;
     final pos = info.eventPosition.global;
 
-    // Determine which paddle to move based on touch x position
-    if (pos.x < size.x / 2 && paddles.isNotEmpty && !paddles[0].isAI) {
-      paddles[0].position.y += info.delta.global.y;
-      paddles[0].position.y = paddles[0].position.y.clamp(
-        paddles[0].minPos, paddles[0].maxPos,
-      );
-    } else if (pos.x >= size.x / 2 && paddles.length > 1 && !paddles[1].isAI) {
-      paddles[1].position.y += info.delta.global.y;
-      paddles[1].position.y = paddles[1].position.y.clamp(
-        paddles[1].minPos, paddles[1].maxPos,
-      );
+    // Bottom half = player 0, top half = player 1
+    if (pos.y > size.y / 2 && !paddles[0].isAI) {
+      _dragToPlayer[pointerId] = 0;
+    } else if (pos.y <= size.y / 2 && paddles.length > 1 && !paddles[1].isAI) {
+      _dragToPlayer[pointerId] = 1;
     }
+  }
+
+  @override
+  void onDragUpdate(int pointerId, DragUpdateInfo info) {
+    if (_gameOver) return;
+    final playerIdx = _dragToPlayer[pointerId];
+    if (playerIdx == null) return;
+
+    paddles[playerIdx].position.x += info.delta.global.x;
+    paddles[playerIdx].position.x = paddles[playerIdx].position.x.clamp(
+      paddles[playerIdx].minPos, paddles[playerIdx].maxPos,
+    );
+  }
+
+  @override
+  void onDragEnd(int pointerId, DragEndInfo info) {
+    _dragToPlayer.remove(pointerId);
   }
 }
 
 class _Paddle extends PositionComponent {
   final Color color;
-  final bool isVertical;
+  final bool isHorizontal;
   final bool isAI;
   final double minPos;
   final double maxPos;
@@ -215,7 +219,7 @@ class _Paddle extends PositionComponent {
     required Vector2 position,
     required Vector2 size,
     required this.color,
-    required this.isVertical,
+    required this.isHorizontal,
     this.isAI = false,
     required this.minPos,
     required this.maxPos,
@@ -227,7 +231,6 @@ class _Paddle extends PositionComponent {
       RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
       Paint()..color = color,
     );
-    // Glow
     canvas.drawRRect(
       RRect.fromRectAndRadius(size.toRect(), const Radius.circular(6)),
       Paint()
@@ -276,10 +279,10 @@ class _CenterLine extends PositionComponent {
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
-    for (double y = 0; y < screenSize.y; y += 20) {
+    for (double x = 0; x < screenSize.x; x += 20) {
       canvas.drawLine(
-        Offset(screenSize.x / 2, y),
-        Offset(screenSize.x / 2, y + 10),
+        Offset(x, screenSize.y / 2),
+        Offset(x + 10, screenSize.y / 2),
         paint,
       );
     }

@@ -23,23 +23,8 @@ class PlayerZoneLayout {
         break;
       case 2:
         _zones = [
-          Rect.fromLTWH(0, 0, w / 2, h),       // Left
-          Rect.fromLTWH(w / 2, 0, w / 2, h),   // Right
-        ];
-        break;
-      case 3:
-        _zones = [
-          Rect.fromLTWH(0, 0, w / 2, h / 2),       // Top-left
-          Rect.fromLTWH(w / 2, 0, w / 2, h / 2),   // Top-right
-          Rect.fromLTWH(w / 4, h / 2, w / 2, h / 2), // Bottom-center
-        ];
-        break;
-      case 4:
-        _zones = [
-          Rect.fromLTWH(0, 0, w / 2, h / 2),       // Top-left
-          Rect.fromLTWH(w / 2, 0, w / 2, h / 2),   // Top-right
-          Rect.fromLTWH(0, h / 2, w / 2, h / 2),   // Bottom-left
-          Rect.fromLTWH(w / 2, h / 2, w / 2, h / 2), // Bottom-right
+          Rect.fromLTWH(0, h / 2, w, h / 2),   // Bottom (Player 1)
+          Rect.fromLTWH(0, 0, w, h / 2),        // Top (Player 2)
         ];
         break;
       default:

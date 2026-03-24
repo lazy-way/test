@@ -137,51 +137,17 @@ class _BasketballAreaState extends State<_BasketballArea> with TickerProviderSta
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final playerCount = widget.players.length;
-                  if (playerCount <= 2) {
-                    return Row(
-                      children: List.generate(playerCount, (i) => Expanded(
-                        child: _PlayerCourt(
-                          playerIndex: i,
-                          playerColor: widget.players[i].color,
-                          ball: balls[i],
-                          score: scores[i],
-                          onSwipe: (dx, dy) => _shoot(i, dx, dy, constraints.maxWidth / playerCount, constraints.maxHeight),
-                        ),
-                      )),
-                    );
-                  } else {
-                    return Column(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: List.generate(min(2, playerCount), (i) => Expanded(
-                              child: _PlayerCourt(
-                                playerIndex: i,
-                                playerColor: widget.players[i].color,
-                                ball: balls[i],
-                                score: scores[i],
-                                onSwipe: (dx, dy) => _shoot(i, dx, dy, constraints.maxWidth / 2, constraints.maxHeight / 2),
-                              ),
-                            )),
-                          ),
-                        ),
-                        if (playerCount > 2)
-                          Expanded(
-                            child: Row(
-                              children: List.generate(playerCount - 2, (i) => Expanded(
-                                child: _PlayerCourt(
-                                  playerIndex: i + 2,
-                                  playerColor: widget.players[i + 2].color,
-                                  ball: balls[i + 2],
-                                  score: scores[i + 2],
-                                  onSwipe: (dx, dy) => _shoot(i + 2, dx, dy, constraints.maxWidth / 2, constraints.maxHeight / 2),
-                                ),
-                              )),
-                            ),
-                          ),
-                      ],
-                    );
-                  }
+                  return Column(
+                    children: List.generate(playerCount, (i) => Expanded(
+                      child: _PlayerCourt(
+                        playerIndex: i,
+                        playerColor: widget.players[i].color,
+                        ball: balls[i],
+                        score: scores[i],
+                        onSwipe: (dx, dy) => _shoot(i, dx, dy, constraints.maxWidth, constraints.maxHeight / playerCount),
+                      ),
+                    )),
+                  );
                 },
               ),
             ),

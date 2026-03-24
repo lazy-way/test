@@ -17,7 +17,7 @@ class PlayerNotifier extends StateNotifier<List<Player>> {
   }
 
   void togglePlayer(int index) {
-    if (index < 0 || index > 3) return;
+    if (index < 0 || index > 1) return;
     final currentIds = state.map((p) => p.id).toSet();
     if (currentIds.contains(index)) {
       if (state.length <= 1) return; // Must have at least 1 player

@@ -178,17 +178,8 @@ class SnakeArenaGame extends FlameGame with MultiTouchDragDetector {
       case 1: return Rect.fromLTWH(0, 0, size.x, size.y);
       case 2:
         return index == 0
-            ? Rect.fromLTWH(0, 0, size.x / 2, size.y)
-            : Rect.fromLTWH(size.x / 2, 0, size.x / 2, size.y);
-      case 3:
-        if (index < 2) {
-          return Rect.fromLTWH(index * size.x / 2, 0, size.x / 2, size.y / 2);
-        }
-        return Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2);
-      case 4:
-        final x = (index % 2) * size.x / 2;
-        final y = (index ~/ 2) * size.y / 2;
-        return Rect.fromLTWH(x, y, size.x / 2, size.y / 2);
+            ? Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2)  // Bottom
+            : Rect.fromLTWH(0, 0, size.x, size.y / 2);           // Top
       default:
         return Rect.fromLTWH(0, 0, size.x, size.y);
     }

@@ -137,11 +137,6 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
         return index == 0
             ? Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2)
             : Rect.fromLTWH(0, 0, size.x, size.y / 2);
-      case 3:
-      case 4:
-        final x = (index % 2) * size.x / 2;
-        final y = (index ~/ 2) * size.y / 2;
-        return Rect.fromLTWH(x, y, size.x / 2, size.y / 2);
       default:
         return Rect.fromLTWH(0, 0, size.x, size.y);
     }

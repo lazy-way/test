@@ -167,7 +167,7 @@ class _BlockStackerAreaState extends State<_BlockStackerArea> {
             ),
             // Player grids
             Expanded(
-              child: Row(
+              child: Column(
                 children: List.generate(widget.players.length, (pi) => Expanded(
                   child: GestureDetector(
                     onTap: () => _dropBlock(pi),

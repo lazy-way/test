@@ -24,7 +24,7 @@ class _PlayerSelectScreenState extends ConsumerState<PlayerSelectScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _slotAnimations = List.generate(4, (i) {
+    _slotAnimations = List.generate(2, (i) {
       final start = i * 0.15;
       final end = start + 0.4;
       return Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -91,7 +91,7 @@ class _PlayerSelectScreenState extends ConsumerState<PlayerSelectScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: List.generate(4, (i) {
+                      children: List.generate(2, (i) {
                         final isActive = activeIds.contains(i);
                         return Transform.scale(
                           scale: _slotAnimations[i].value,

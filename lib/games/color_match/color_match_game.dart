@@ -199,8 +199,7 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
             // Player zones with buttons
             Expanded(
               flex: 3,
-              child: widget.players.length <= 2
-                  ? Row(
+              child: Column(
                       children: List.generate(widget.players.length, (pi) => Expanded(
                         child: _PlayerButtonZone(
                           playerIndex: pi,
@@ -211,45 +210,6 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
                           active: _roundActive,
                         ),
                       )),
-                    )
-                  : Column(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: List.generate(
-                              min(2, widget.players.length),
-                              (pi) => Expanded(
-                                child: _PlayerButtonZone(
-                                  playerIndex: pi,
-                                  playerColor: widget.players[pi].color,
-                                  buttonColors: _buttonColors,
-                                  colors: colors,
-                                  onTap: (bi) => _onColorTap(pi, bi),
-                                  active: _roundActive,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (widget.players.length > 2)
-                          Expanded(
-                            child: Row(
-                              children: List.generate(
-                                widget.players.length - 2,
-                                (pi) => Expanded(
-                                  child: _PlayerButtonZone(
-                                    playerIndex: pi + 2,
-                                    playerColor: widget.players[pi + 2].color,
-                                    buttonColors: _buttonColors,
-                                    colors: colors,
-                                    onTap: (bi) => _onColorTap(pi + 2, bi),
-                                    active: _roundActive,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
                     ),
             ),
           ],
