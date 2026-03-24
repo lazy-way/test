@@ -138,15 +138,20 @@ class _BasketballAreaState extends State<_BasketballArea> with TickerProviderSta
                 builder: (context, constraints) {
                   final playerCount = widget.players.length;
                   return Column(
-                    children: List.generate(playerCount, (i) => Expanded(
-                      child: _PlayerCourt(
+                    children: List.generate(playerCount, (i) {
+                      final court = _PlayerCourt(
                         playerIndex: i,
                         playerColor: widget.players[i].color,
                         ball: balls[i],
                         score: scores[i],
                         onSwipe: (dx, dy) => _shoot(i, dx, dy, constraints.maxWidth, constraints.maxHeight / playerCount),
-                      ),
-                    )),
+                      );
+                      return Expanded(
+                        child: (i == 1 && playerCount == 2)
+                            ? Transform.rotate(angle: pi, child: court)
+                            : court,
+                      );
+                    }),
                   );
                 },
               ),

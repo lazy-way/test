@@ -200,16 +200,21 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
             Expanded(
               flex: 3,
               child: Column(
-                      children: List.generate(widget.players.length, (pi) => Expanded(
-                        child: _PlayerButtonZone(
-                          playerIndex: pi,
-                          playerColor: widget.players[pi].color,
+                      children: List.generate(widget.players.length, (playerIdx) {
+                        final zone = _PlayerButtonZone(
+                          playerIndex: playerIdx,
+                          playerColor: widget.players[playerIdx].color,
                           buttonColors: _buttonColors,
                           colors: colors,
-                          onTap: (bi) => _onColorTap(pi, bi),
+                          onTap: (bi) => _onColorTap(playerIdx, bi),
                           active: _roundActive,
-                        ),
-                      )),
+                        );
+                        return Expanded(
+                          child: (playerIdx == 1 && widget.players.length == 2)
+                              ? Transform.rotate(angle: pi, child: zone)
+                              : zone,
+                        );
+                      }),
                     ),
             ),
           ],

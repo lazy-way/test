@@ -6,7 +6,7 @@ import 'dart:math';
 import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
-class TankBattleGame extends FlameGame with MultiTouchTapDetector {
+class TankBattleGame extends FlameGame with MultiTouchTapDetector, MultiTouchDragDetector {
   final List<Player> players;
   final VoidCallback onGameEnd;
 
@@ -14,6 +14,7 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
   final List<_Bullet> bullets = [];
   final List<_Wall> walls = [];
   bool _gameOver = false;
+  final Map<int, int> _dragToPlayer = {};
 
   TankBattleGame({required this.players, required this.onGameEnd});
 
@@ -31,16 +32,11 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-
-    // Create walls
     _createWalls();
 
-    // Create tanks at corners
     final positions = [
-      Vector2(60, size.y - 60),
-      Vector2(size.x - 60, 60),
-      Vector2(60, 60),
-      Vector2(size.x - 60, size.y - 60),
+      Vector2(size.x / 2, size.y - 80),
+      Vector2(size.x / 2, 80),
     ];
 
     tanks = List.generate(players.length, (i) {
@@ -54,25 +50,22 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
       return tank;
     });
 
-    // Lives display
     add(_LivesDisplay(tanks: tanks, screenSize: size, players: players));
   }
 
   void _createWalls() {
     final rng = Random(42);
-    // Border walls
-    final borderThickness = 4.0;
-    walls.add(_Wall(Rect.fromLTWH(0, 0, size.x, borderThickness)));
-    walls.add(_Wall(Rect.fromLTWH(0, size.y - borderThickness, size.x, borderThickness)));
-    walls.add(_Wall(Rect.fromLTWH(0, 0, borderThickness, size.y)));
-    walls.add(_Wall(Rect.fromLTWH(size.x - borderThickness, 0, borderThickness, size.y)));
+    final bt = 4.0;
+    walls.add(_Wall(Rect.fromLTWH(0, 0, size.x, bt)));
+    walls.add(_Wall(Rect.fromLTWH(0, size.y - bt, size.x, bt)));
+    walls.add(_Wall(Rect.fromLTWH(0, 0, bt, size.y)));
+    walls.add(_Wall(Rect.fromLTWH(size.x - bt, 0, bt, size.y)));
 
-    // Internal walls
     for (int i = 0; i < 6; i++) {
-      final w = 20.0 + rng.nextDouble() * 60;
-      final h = 20.0 + rng.nextDouble() * 60;
-      final x = 80 + rng.nextDouble() * (size.x - 160);
-      final y = 80 + rng.nextDouble() * (size.y - 160);
+      final w = 20.0 + rng.nextDouble() * 50;
+      final h = 20.0 + rng.nextDouble() * 50;
+      final x = 60 + rng.nextDouble() * (size.x - 120);
+      final y = 60 + rng.nextDouble() * (size.y - 120);
       walls.add(_Wall(Rect.fromLTWH(x, y, w, h)));
     }
 
@@ -81,41 +74,68 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
     }
   }
 
+  bool _collidesWithWall(Vector2 pos, double radius) {
+    for (final wall in walls) {
+      final closest = Offset(
+        pos.x.clamp(wall.rect.left, wall.rect.right),
+        pos.y.clamp(wall.rect.top, wall.rect.bottom),
+      );
+      final dist = (Vector2(closest.dx, closest.dy) - pos).length;
+      if (dist < radius) return true;
+    }
+    return false;
+  }
+
   @override
   void update(double dt) {
     super.update(dt);
     if (_gameOver) return;
 
-    // Update bullets
     for (final bullet in List.from(bullets)) {
       bullet.position += bullet.velocity * dt;
       bullet.lifetime -= dt;
 
       // Wall bounce
+      bool hitWall = false;
       for (final wall in walls) {
         if (wall.rect.contains(Offset(bullet.position.x, bullet.position.y))) {
           bullet.bounces++;
-          if (bullet.bounces > 1) {
+          if (bullet.bounces > 2) {
             bullet.lifetime = 0;
           } else {
-            // Simple bounce
-            bullet.velocity = -bullet.velocity;
+            // Determine bounce axis
+            final bx = bullet.position.x;
+            final by = bullet.position.y;
+            final distL = (bx - wall.rect.left).abs();
+            final distR = (bx - wall.rect.right).abs();
+            final distT = (by - wall.rect.top).abs();
+            final distB = (by - wall.rect.bottom).abs();
+            final minDist = [distL, distR, distT, distB].reduce((a, b) => a < b ? a : b);
+            if (minDist == distL || minDist == distR) {
+              bullet.velocity.x = -bullet.velocity.x;
+            } else {
+              bullet.velocity.y = -bullet.velocity.y;
+            }
             bullet.position += bullet.velocity * dt * 2;
           }
+          hitWall = true;
+          break;
         }
       }
 
-      // Hit tank
-      for (final tank in tanks) {
-        if (!tank.alive) continue;
-        if (tank.playerId == bullet.ownerId && bullet.lifetime > 1.5) continue;
-        final dist = tank.position.distanceTo(bullet.position);
-        if (dist < 20) {
-          tank.lives--;
-          bullet.lifetime = 0;
-          if (tank.lives <= 0) {
-            tank.alive = false;
-            _checkWin();
+      // Hit tank (skip owner for first 0.3s)
+      if (!hitWall) {
+        for (final tank in tanks) {
+          if (!tank.alive) continue;
+          if (tank.playerId == bullet.ownerId && bullet.lifetime > 2.7) continue;
+          final dist = tank.position.distanceTo(bullet.position);
+          if (dist < 18) {
+            tank.lives--;
+            bullet.lifetime = 0;
+            if (tank.lives <= 0) {
+              tank.alive = false;
+              _checkWin();
+            }
           }
         }
       }
@@ -138,44 +158,75 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
     }
   }
 
+  // Drag = move tank
+  @override
+  void onDragStart(int pointerId, DragStartInfo info) {
+    if (_gameOver) return;
+    final pos = info.eventPosition.global;
+    for (int i = 0; i < tanks.length; i++) {
+      if (!tanks[i].alive) continue;
+      final zone = _getPlayerZone(i);
+      if (zone.contains(Offset(pos.x, pos.y))) {
+        _dragToPlayer[pointerId] = i;
+        break;
+      }
+    }
+  }
+
+  @override
+  void onDragUpdate(int pointerId, DragUpdateInfo info) {
+    if (_gameOver) return;
+    final playerIdx = _dragToPlayer[pointerId];
+    if (playerIdx == null) return;
+    final tank = tanks[playerIdx];
+    if (!tank.alive) return;
+
+    final newPos = tank.position + info.delta.global;
+    // Clamp to arena
+    newPos.x = newPos.x.clamp(15, size.x - 15);
+    newPos.y = newPos.y.clamp(15, size.y - 15);
+
+    if (!_collidesWithWall(newPos, 14)) {
+      // Update angle to face movement direction
+      final delta = info.delta.global;
+      if (delta.length > 1) {
+        tank.angle = atan2(delta.y, delta.x);
+      }
+      tank.position = newPos;
+    }
+  }
+
+  @override
+  void onDragEnd(int pointerId, DragEndInfo info) {
+    _dragToPlayer.remove(pointerId);
+  }
+
+  // Tap = shoot toward tap position
   @override
   void onTapDown(int pointerId, TapDownInfo info) {
     if (_gameOver) return;
     final pos = info.eventPosition.global;
 
-    // Find nearest alive tank to determine which player tapped
-    int? nearestPlayer;
-    double nearestDist = double.infinity;
-
     for (int i = 0; i < tanks.length; i++) {
       if (!tanks[i].alive) continue;
-      // Each player taps in their zone (simplified: use screen quadrants for multi-player)
       final zone = _getPlayerZone(i);
       if (zone.contains(Offset(pos.x, pos.y))) {
-        nearestPlayer = i;
+        final tank = tanks[i];
+        final dir = (pos - tank.position).normalized();
+        tank.angle = atan2(dir.y, dir.x);
+
+        if (tank.canShoot) {
+          final bullet = _Bullet(
+            position: tank.position + dir * 22,
+            velocity: dir * 450,
+            ownerId: i,
+            color: tank.color,
+          );
+          bullets.add(bullet);
+          add(bullet);
+          tank.lastShotTime = 0;
+        }
         break;
-      }
-    }
-
-    if (nearestPlayer != null) {
-      final tank = tanks[nearestPlayer];
-      if (!tank.alive) return;
-
-      // Aim toward tap position
-      final dir = (pos - tank.position).normalized();
-      tank.angle = atan2(dir.y, dir.x);
-
-      // Shoot
-      if (tank.canShoot) {
-        final bullet = _Bullet(
-          position: tank.position + dir * 20,
-          velocity: dir * 400,
-          ownerId: nearestPlayer,
-          color: tank.color,
-        );
-        bullets.add(bullet);
-        add(bullet);
-        tank.lastShotTime = 0;
       }
     }
   }
@@ -189,6 +240,39 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
       default: return Rect.fromLTWH(0, 0, size.x, size.y);
     }
   }
+
+  @override
+  void render(Canvas canvas) {
+    super.render(canvas);
+
+    // Zone divider
+    canvas.drawLine(
+      Offset(0, size.y / 2),
+      Offset(size.x, size.y / 2),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.08)
+        ..strokeWidth = 1,
+    );
+
+    // Drag hint text
+    for (int i = 0; i < tanks.length; i++) {
+      if (!tanks[i].alive) continue;
+      final zone = _getPlayerZone(i);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: 'Drag to move • Tap to shoot',
+          style: TextStyle(color: players[i].color.withValues(alpha: 0.2), fontSize: 10),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      if (i == 0) {
+        tp.paint(canvas, Offset(zone.center.dx - tp.width / 2, zone.bottom - 16));
+      } else {
+        tp.paint(canvas, Offset(zone.center.dx - tp.width / 2, zone.top + 4));
+      }
+    }
+  }
 }
 
 class _Tank extends PositionComponent {
@@ -197,7 +281,7 @@ class _Tank extends PositionComponent {
   int lives;
   bool alive = true;
   double lastShotTime = 0.5;
-  bool get canShoot => lastShotTime >= 0.5;
+  bool get canShoot => lastShotTime >= 0.4;
 
   _Tank({
     required Vector2 position,
@@ -251,7 +335,7 @@ class _Bullet extends PositionComponent {
   Vector2 velocity;
   final int ownerId;
   final Color color;
-  double lifetime = 2.0;
+  double lifetime = 3.0;
   int bounces = 0;
 
   _Bullet({
@@ -300,17 +384,16 @@ class _LivesDisplay extends PositionComponent {
   @override
   void render(Canvas canvas) {
     for (int i = 0; i < tanks.length; i++) {
-      final x = 16.0 + i * 80;
-      final y = screenSize.y - 30.0;
+      final y = i == 0 ? screenSize.y - 30.0 : 10.0;
       final text = TextPainter(
         text: TextSpan(
           text: 'P${i + 1}: ${'♥' * tanks[i].lives}',
-          style: TextStyle(color: players[i].color, fontSize: 12, fontWeight: FontWeight.bold),
+          style: TextStyle(color: players[i].color, fontSize: 14, fontWeight: FontWeight.bold),
         ),
         textDirection: TextDirection.ltr,
       );
       text.layout();
-      text.paint(canvas, Offset(x, y));
+      text.paint(canvas, Offset(16, y));
     }
   }
 }

@@ -64,28 +64,50 @@ class FruitSlashGame extends FlameGame with MultiTouchDragDetector {
     // Update fruits
     for (final fruit in List.from(fruits)) {
       fruit.position += fruit.velocity * dt;
-      fruit.velocity.y += 400 * dt; // Gravity
+      // Gravity: pull down for bottom-zone fruits, pull up for top-zone fruits
+      if (fruit.zoneIndex == 0) {
+        fruit.velocity.y += 400 * dt;
+      } else {
+        fruit.velocity.y -= 400 * dt;
+      }
       fruit.rotation += fruit.rotSpeed * dt;
 
-      if (fruit.position.y > size.y + 50) {
+      if (fruit.position.y > size.y + 50 || fruit.position.y < -50) {
         fruits.remove(fruit);
       }
     }
   }
 
   void _spawnFruit() {
-    final x = 50 + _rng.nextDouble() * (size.x - 100);
-    final isBomb = _rng.nextDouble() < 0.15;
-
+    // Spawn for bottom zone (player 0)
+    final x1 = 50 + _rng.nextDouble() * (size.x - 100);
+    final isBomb1 = _rng.nextDouble() < 0.15;
     fruits.add(_Fruit(
-      position: Vector2(x, size.y + 20),
+      position: Vector2(x1, size.y + 20),
       velocity: Vector2((_rng.nextDouble() - 0.5) * 100, -500 - _rng.nextDouble() * 200),
       radius: 20 + _rng.nextDouble() * 10,
-      color: isBomb ? Colors.black : fruitColors[_rng.nextInt(fruitColors.length)],
-      isBomb: isBomb,
+      color: isBomb1 ? Colors.black : fruitColors[_rng.nextInt(fruitColors.length)],
+      isBomb: isBomb1,
       rotation: 0,
       rotSpeed: (_rng.nextDouble() - 0.5) * 5,
+      zoneIndex: 0,
     ));
+
+    // For 2 players, also spawn for top zone (player 1) - from top, flying down
+    if (players.length > 1 && _rng.nextDouble() < 0.7) {
+      final x2 = 50 + _rng.nextDouble() * (size.x - 100);
+      final isBomb2 = _rng.nextDouble() < 0.15;
+      fruits.add(_Fruit(
+        position: Vector2(x2, -20),
+        velocity: Vector2((_rng.nextDouble() - 0.5) * 100, 500 + _rng.nextDouble() * 200),
+        radius: 20 + _rng.nextDouble() * 10,
+        color: isBomb2 ? Colors.black : fruitColors[_rng.nextInt(fruitColors.length)],
+        isBomb: isBomb2,
+        rotation: 0,
+        rotSpeed: (_rng.nextDouble() - 0.5) * 5,
+        zoneIndex: 1,
+      ));
+    }
   }
 
   @override
@@ -258,6 +280,7 @@ class _Fruit {
   double rotation;
   double rotSpeed;
   bool slashed = false;
+  int zoneIndex;
 
   _Fruit({
     required this.position,
@@ -267,5 +290,6 @@ class _Fruit {
     required this.isBomb,
     required this.rotation,
     required this.rotSpeed,
+    this.zoneIndex = 0,
   });
 }

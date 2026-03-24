@@ -37,12 +37,14 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
     final halfH = size.y / 2;
     boats = List.generate(players.length, (i) {
       final zoneTop = i == 0 ? halfH : 0.0;
+      final isTop = i == 1;
       return _Boat(
-        position: Vector2(size.x / 2, zoneTop + halfH * 0.8),
+        position: Vector2(size.x / 2, isTop ? zoneTop + halfH * 0.2 : zoneTop + halfH * 0.8),
         color: players[i].color,
         playerId: i,
         laneWidth: size.x,
         laneX: 0,
+        isTop: isTop,
       );
     });
   }
@@ -61,18 +63,26 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
       _spawnTimer = 0;
       final halfH = size.y / 2;
       final halfIdx = _rng.nextInt(players.length); // 0 = bottom half, 1 = top half
-      final zoneTop = halfIdx == 0 ? halfH : 0.0;
+      final isTopZone = halfIdx == 1;
+      final spawnY = isTopZone
+          ? halfH + 30  // Top zone: spawn from bottom of zone (center of screen), move up
+          : halfH - 30; // Bottom zone: spawn from top of zone (center of screen), move down
       obstacles.add(_Obstacle(
-        position: Vector2(20 + _rng.nextDouble() * (size.x - 40), zoneTop - 30),
+        position: Vector2(20 + _rng.nextDouble() * (size.x - 40), spawnY),
         width: 30 + _rng.nextDouble() * 20,
         height: 15 + _rng.nextDouble() * 10,
+        movesUp: isTopZone,
       ));
     }
 
     // Update obstacles
     for (final obs in List.from(obstacles)) {
-      obs.position.y += _scrollSpeed * dt;
-      if (obs.position.y > size.y + 50) {
+      if (obs.movesUp) {
+        obs.position.y -= _scrollSpeed * dt;
+      } else {
+        obs.position.y += _scrollSpeed * dt;
+      }
+      if (obs.position.y > size.y + 50 || obs.position.y < -50) {
         obstacles.remove(obs);
       }
 
@@ -155,6 +165,11 @@ class BoatRushGame extends FlameGame with MultiTouchTapDetector {
       canvas.save();
       canvas.translate(boat.position.x, boat.position.y);
 
+      // Rotate 180° for top player so boat faces down
+      if (boat.isTop) {
+        canvas.rotate(pi);
+      }
+
       // Boat body
       final path = Path()
         ..moveTo(0, -18)
@@ -194,6 +209,7 @@ class _Boat {
   double laneWidth;
   double laneX;
   bool alive = true;
+  bool isTop;
 
   _Boat({
     required this.position,
@@ -201,6 +217,7 @@ class _Boat {
     required this.playerId,
     required this.laneWidth,
     required this.laneX,
+    this.isTop = false,
   });
 }
 
@@ -208,6 +225,7 @@ class _Obstacle {
   Vector2 position;
   double width;
   double height;
+  bool movesUp;
 
-  _Obstacle({required this.position, required this.width, required this.height});
+  _Obstacle({required this.position, required this.width, required this.height, this.movesUp = false});
 }

@@ -149,6 +149,15 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
 
     for (int i = 0; i < players.length; i++) {
       final top = stripHeight * i;
+      final isTopPlayer = i == 1 && players.length > 1;
+
+      // For top player, rotate the entire strip 180° around its center
+      if (isTopPlayer) {
+        canvas.save();
+        canvas.translate(size.x / 2, top + stripHeight / 2);
+        canvas.rotate(pi);
+        canvas.translate(-size.x / 2, -(top + stripHeight / 2));
+      }
 
       // Strip background
       if (i % 2 == 1) {
@@ -173,40 +182,45 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
           Paint()..color = Colors.white.withValues(alpha: 0.1),
         );
       }
-    }
 
-    // Obstacles
-    for (final obs in obstacles) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(obs.position.x, obs.position.y, obs.width, obs.height),
-          const Radius.circular(3),
-        ),
-        Paint()..color = const Color(0xFFFF6B6B),
-      );
-    }
+      // Obstacles for this strip
+      for (final obs in obstacles) {
+        if (obs.lane != i) continue;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(obs.position.x, obs.position.y, obs.width, obs.height),
+            const Radius.circular(3),
+          ),
+          Paint()..color = const Color(0xFFFF6B6B),
+        );
+      }
 
-    // Skaters
-    for (final skater in skaters) {
-      if (!skater.alive) continue;
-      canvas.save();
-      canvas.translate(skater.position.x, skater.position.y);
+      // Skater for this strip
+      final skater = skaters[i];
+      if (skater.alive) {
+        canvas.save();
+        canvas.translate(skater.position.x, skater.position.y);
 
-      // Body
-      canvas.drawCircle(const Offset(0, -10), 8, Paint()..color = skater.color);
-      // Board
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          const Rect.fromLTWH(-10, 0, 20, 5),
-          const Radius.circular(2),
-        ),
-        Paint()..color = Colors.white70,
-      );
-      // Wheels
-      canvas.drawCircle(const Offset(-6, 5), 2.5, Paint()..color = Colors.grey);
-      canvas.drawCircle(const Offset(6, 5), 2.5, Paint()..color = Colors.grey);
+        // Body
+        canvas.drawCircle(const Offset(0, -10), 8, Paint()..color = skater.color);
+        // Board
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(-10, 0, 20, 5),
+            const Radius.circular(2),
+          ),
+          Paint()..color = Colors.white70,
+        );
+        // Wheels
+        canvas.drawCircle(const Offset(-6, 5), 2.5, Paint()..color = Colors.grey);
+        canvas.drawCircle(const Offset(6, 5), 2.5, Paint()..color = Colors.grey);
 
-      canvas.restore();
+        canvas.restore();
+      }
+
+      if (isTopPlayer) {
+        canvas.restore();
+      }
     }
 
     // Distance

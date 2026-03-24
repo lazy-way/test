@@ -5,16 +5,15 @@ import 'dart:math';
 import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
-class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
+class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
   final List<Player> players;
   final VoidCallback onGameEnd;
 
   late List<_RaceCar> cars;
-  late Path trackPath;
-  late List<Offset> trackPoints;
+  late List<_Joystick> joysticks;
   final int lapsToWin = 3;
   bool _gameOver = false;
-  final Map<int, int> _activeTouches = {};
+  final Map<int, int> _dragToJoystick = {};
 
   MicroRacersGame({required this.players, required this.onGameEnd});
 
@@ -33,16 +32,10 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Create oval track
     final cx = size.x / 2;
     final cy = size.y / 2;
     final rx = size.x * 0.35;
-    final ry = size.y * 0.35;
-
-    trackPoints = List.generate(100, (i) {
-      final angle = 2 * pi * i / 100;
-      return Offset(cx + rx * cos(angle), cy + ry * sin(angle));
-    });
+    final ry = size.y * 0.30;
 
     cars = List.generate(players.length, (i) {
       final startAngle = 2 * pi * i / players.length;
@@ -52,6 +45,24 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
         playerId: i,
         angle: startAngle + pi / 2,
         trackAngle: startAngle,
+      );
+    });
+
+    // Create joysticks in each player's zone
+    final joystickRadius = 40.0;
+    joysticks = List.generate(players.length, (i) {
+      Vector2 center;
+      if (i == 0) {
+        // Bottom player - joystick at bottom-center
+        center = Vector2(size.x / 2, size.y - joystickRadius - 20);
+      } else {
+        // Top player - joystick at top-center
+        center = Vector2(size.x / 2, joystickRadius + 20);
+      }
+      return _Joystick(
+        center: center,
+        radius: joystickRadius,
+        color: players[i].color,
       );
     });
   }
@@ -64,17 +75,31 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
     final cx = size.x / 2;
     final cy = size.y / 2;
     final rx = size.x * 0.35;
-    final ry = size.y * 0.35;
+    final ry = size.y * 0.30;
 
-    for (final car in cars) {
-      // Auto accelerate along track
-      car.speed = 150;
+    for (int i = 0; i < cars.length; i++) {
+      final car = cars[i];
+      final joy = joysticks[i];
+
+      // Speed from joystick Y: pushing forward = faster
+      // For bottom player (i=0): pushing UP (negative delta.y) = faster
+      // For top player (i=1): pushing DOWN (positive delta.y) = faster (inverted view)
+      double speedInput;
+      if (i == 0) {
+        speedInput = -joy.delta.y; // Up = positive = faster
+      } else {
+        speedInput = joy.delta.y; // Down from top player's view = positive = faster
+      }
+
+      // Clamp speed: idle=80, full=300
+      car.speed = 80 + (speedInput.clamp(0, 1)) * 220;
+
+      // Steering from joystick X
+      car.steering = joy.delta.x * 2.0;
+
       car.trackAngle += car.speed * dt / (max(rx, ry));
-
-      // Apply steering
       car.trackAngle += car.steering * dt * 0.5;
 
-      // Keep on track with some freedom
       final targetX = cx + rx * cos(car.trackAngle);
       final targetY = cy + ry * sin(car.trackAngle);
       car.position.x += (targetX - car.position.x) * 0.1;
@@ -87,8 +112,8 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
         car.lastLapAngle = car.trackAngle;
         if (car.laps >= lapsToWin) {
           _gameOver = true;
-          for (int i = 0; i < players.length; i++) {
-            players[i].score = cars[i].laps;
+          for (int j = 0; j < players.length; j++) {
+            players[j].score = cars[j].laps;
           }
           onGameEnd();
           return;
@@ -98,35 +123,56 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
   }
 
   @override
-  void onTapDown(int pointerId, TapDownInfo info) {
+  void onDragStart(int pointerId, DragStartInfo info) {
     if (_gameOver) return;
     final pos = info.eventPosition.global;
 
-    for (int i = 0; i < players.length; i++) {
-      final zone = _getPlayerZone(i);
-      if (zone.contains(Offset(pos.x, pos.y))) {
-        // Left half of zone = steer left, right half = steer right
-        final zoneCenterX = zone.left + zone.width / 2;
-        cars[i].steering = pos.x < zoneCenterX ? -1.0 : 1.0;
-        _activeTouches[pointerId] = i;
+    for (int i = 0; i < joysticks.length; i++) {
+      final dist = (pos - joysticks[i].center).length;
+      if (dist < joysticks[i].radius + 20) {
+        _dragToJoystick[pointerId] = i;
         break;
+      }
+    }
+
+    // Also allow touching anywhere in zone to activate joystick
+    if (!_dragToJoystick.containsKey(pointerId)) {
+      for (int i = 0; i < players.length; i++) {
+        final zone = _getPlayerZone(i);
+        if (zone.contains(Offset(pos.x, pos.y))) {
+          _dragToJoystick[pointerId] = i;
+          break;
+        }
       }
     }
   }
 
   @override
-  void onTapUp(int pointerId, TapUpInfo info) {
-    final playerIdx = _activeTouches.remove(pointerId);
-    if (playerIdx != null) {
-      cars[playerIdx].steering = 0;
-    }
+  void onDragUpdate(int pointerId, DragUpdateInfo info) {
+    if (_gameOver) return;
+    final joyIdx = _dragToJoystick[pointerId];
+    if (joyIdx == null) return;
+
+    final pos = info.eventPosition.global;
+    final joy = joysticks[joyIdx];
+    final offset = pos - joy.center;
+    final clamped = offset.length > joy.radius
+        ? offset.normalized() * joy.radius
+        : offset;
+
+    joy.thumbPos = joy.center + clamped;
+    joy.delta = Vector2(
+      clamped.x / joy.radius,
+      clamped.y / joy.radius,
+    );
   }
 
   @override
-  void onTapCancel(int pointerId) {
-    final playerIdx = _activeTouches.remove(pointerId);
-    if (playerIdx != null) {
-      cars[playerIdx].steering = 0;
+  void onDragEnd(int pointerId, DragEndInfo info) {
+    final joyIdx = _dragToJoystick.remove(pointerId);
+    if (joyIdx != null) {
+      joysticks[joyIdx].thumbPos = joysticks[joyIdx].center.clone();
+      joysticks[joyIdx].delta = Vector2.zero();
     }
   }
 
@@ -149,16 +195,15 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
     final cx = size.x / 2;
     final cy = size.y / 2;
     final rx = size.x * 0.35;
-    final ry = size.y * 0.35;
+    final ry = size.y * 0.30;
 
     // Track
-    final trackPaint = Paint()
-      ..color = const Color(0xFF555555)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 50;
     canvas.drawOval(
       Rect.fromCenter(center: Offset(cx, cy), width: rx * 2, height: ry * 2),
-      trackPaint,
+      Paint()
+        ..color = const Color(0xFF555555)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 50,
     );
 
     // Track borders
@@ -188,7 +233,6 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
       canvas.translate(car.position.x, car.position.y);
       canvas.rotate(car.angle);
 
-      // Car body
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           const Rect.fromLTWH(-8, -5, 16, 10),
@@ -196,10 +240,17 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
         ),
         Paint()..color = car.color,
       );
-      // Windshield
       canvas.drawRect(
         const Rect.fromLTWH(2, -3, 4, 6),
         Paint()..color = Colors.white.withValues(alpha: 0.5),
+      );
+      // Glow
+      canvas.drawCircle(
+        Offset.zero,
+        10,
+        Paint()
+          ..color = car.color.withValues(alpha: 0.3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
 
       canvas.restore();
@@ -207,16 +258,59 @@ class MicroRacersGame extends FlameGame with MultiTouchTapDetector {
 
     // Lap counters
     for (int i = 0; i < cars.length; i++) {
-      final textPainter = TextPainter(
+      final y = i == 0 ? size.y - 60.0 : 40.0;
+      final tp = TextPainter(
         text: TextSpan(
           text: 'P${i + 1}: Lap ${cars[i].laps}/$lapsToWin',
           style: TextStyle(color: cars[i].color, fontSize: 14, fontWeight: FontWeight.bold),
         ),
         textDirection: TextDirection.ltr,
       );
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(10, 10.0 + i * 20));
+      tp.layout();
+      tp.paint(canvas, Offset(10, y));
     }
+
+    // Joysticks
+    for (final joy in joysticks) {
+      // Base circle
+      canvas.drawCircle(
+        Offset(joy.center.x, joy.center.y),
+        joy.radius,
+        Paint()
+          ..color = joy.color.withValues(alpha: 0.15)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawCircle(
+        Offset(joy.center.x, joy.center.y),
+        joy.radius,
+        Paint()
+          ..color = joy.color.withValues(alpha: 0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+      // Thumb
+      canvas.drawCircle(
+        Offset(joy.thumbPos.x, joy.thumbPos.y),
+        16,
+        Paint()..color = joy.color.withValues(alpha: 0.6),
+      );
+      canvas.drawCircle(
+        Offset(joy.thumbPos.x, joy.thumbPos.y),
+        16,
+        Paint()
+          ..color = joy.color.withValues(alpha: 0.3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+    }
+
+    // Zone divider
+    canvas.drawLine(
+      Offset(0, size.y / 2),
+      Offset(size.x, size.y / 2),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.08)
+        ..strokeWidth = 1,
+    );
   }
 }
 
@@ -238,4 +332,20 @@ class _RaceCar {
     required this.angle,
     required this.trackAngle,
   }) : lastLapAngle = trackAngle;
+}
+
+class _Joystick {
+  final Vector2 center;
+  final double radius;
+  final Color color;
+  late Vector2 thumbPos;
+  Vector2 delta = Vector2.zero();
+
+  _Joystick({
+    required this.center,
+    required this.radius,
+    required this.color,
+  }) {
+    thumbPos = center.clone();
+  }
 }
