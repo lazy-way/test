@@ -68,8 +68,8 @@ class GameRegistry {
     ),
     GameConfig(
       id: 'sumo_push',
-      name: 'Sumo Push',
-      description: 'Push opponents off the ring',
+      name: 'Pen Fight',
+      description: 'Flick to push opponent off the ring',
       icon: Icons.sports_martial_arts,
       category: GameCategory.action,
       minPlayers: 2,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
-import '../../app/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ColorMatchGame extends StatelessWidget {
@@ -45,25 +44,22 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
   int _targetColorIndex = 0;
   List<int> _buttonColors = [];
   late List<int> _scores;
-  bool _showTarget = true;
+  bool _showTarget = false;
   bool _roundActive = false;
   bool _gameOver = false;
-
-  late AnimationController _flashController;
-  late Animation<double> _flashAnimation;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
     _scores = List.filled(widget.players.length, 0);
-    _flashController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _flashAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _flashController, curve: Curves.easeOut),
-    );
-    _nextRound();
+    // Delay first round to wait for GameWrapper's 3-2-1 countdown (~3.5s)
+    Future.delayed(const Duration(milliseconds: 3800), () {
+      if (mounted) {
+        _started = true;
+        _nextRound();
+      }
+    });
   }
 
   void _nextRound() {
@@ -80,15 +76,12 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
       _round++;
       _targetColorIndex = _random.nextInt(colors.length);
       _buttonColors = List.generate(4, (_) => _random.nextInt(colors.length));
-      // Ensure target is in the buttons
       _buttonColors[_random.nextInt(4)] = _targetColorIndex;
       _showTarget = true;
       _roundActive = false;
     });
 
-    _flashController.forward(from: 0);
-
-    Future.delayed(const Duration(milliseconds: 1000), () {
+    Future.delayed(const Duration(milliseconds: 1200), () {
       if (mounted && !_gameOver) {
         setState(() {
           _showTarget = false;
@@ -112,12 +105,13 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
 
   @override
   void dispose() {
-    _flashController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final playerCount = widget.players.length;
+
     return Container(
       color: const Color(0xFF0a0a2e),
       child: SafeArea(
@@ -125,22 +119,21 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
           children: [
             // Round counter and scores
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Round $_round/$_totalRounds',
-                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 16),
+                    _started ? 'Round $_round/$_totalRounds' : 'Get Ready...',
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14),
                   ),
                   Row(
-                    children: List.generate(widget.players.length, (i) => Padding(
+                    children: List.generate(playerCount, (i) => Padding(
                       padding: const EdgeInsets.only(left: 12),
                       child: Row(
                         children: [
                           Container(
-                            width: 20,
-                            height: 20,
+                            width: 18, height: 18,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: widget.players[i].color,
@@ -159,63 +152,71 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
               ),
             ),
 
-            // Target display
+            // P2 buttons at TOP (rotated 180° for facing player)
+            if (playerCount > 1)
+              Expanded(
+                flex: 3,
+                child: Transform.rotate(
+                  angle: pi,
+                  child: _PlayerButtonZone(
+                    playerIndex: 1,
+                    playerColor: widget.players[1].color,
+                    buttonColors: _buttonColors,
+                    colors: colors,
+                    onTap: (bi) => _onColorTap(1, bi),
+                    active: _roundActive,
+                  ),
+                ),
+              ),
+
+            // Color flash in CENTER
             Expanded(
               flex: 2,
               child: Center(
-                child: AnimatedBuilder(
-                  animation: _flashController,
-                  builder: (context, child) {
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: _showTarget ? colors[_targetColorIndex] : Colors.white24,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: _showTarget ? [
-                          BoxShadow(
-                            color: colors[_targetColorIndex].withValues(alpha: 0.5),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                          ),
-                        ] : [],
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: _showTarget ? colors[_targetColorIndex] : Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: _showTarget ? [
+                      BoxShadow(
+                        color: colors[_targetColorIndex].withValues(alpha: 0.5),
+                        blurRadius: 30,
+                        spreadRadius: 5,
                       ),
-                      child: Center(
-                        child: Text(
-                          _showTarget ? colorNames[_targetColorIndex] : '?',
-                          style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
-                            fontSize: _showTarget ? 18 : 48,
-                            color: Colors.white,
-                          ),
-                        ),
+                    ] : [],
+                  ),
+                  child: Center(
+                    child: Text(
+                      !_started
+                          ? ''
+                          : _showTarget
+                              ? colorNames[_targetColorIndex]
+                              : '?',
+                      style: GoogleFonts.fredoka(
+                        fontWeight: FontWeight.w700,
+                        fontSize: _showTarget ? 16 : 40,
+                        color: Colors.white,
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
             ),
 
-            // Player zones with buttons
+            // P1 buttons at BOTTOM (normal orientation)
             Expanded(
               flex: 3,
-              child: Column(
-                      children: List.generate(widget.players.length, (playerIdx) {
-                        final zone = _PlayerButtonZone(
-                          playerIndex: playerIdx,
-                          playerColor: widget.players[playerIdx].color,
-                          buttonColors: _buttonColors,
-                          colors: colors,
-                          onTap: (bi) => _onColorTap(playerIdx, bi),
-                          active: _roundActive,
-                        );
-                        return Expanded(
-                          child: (playerIdx == 1 && widget.players.length == 2)
-                              ? Transform.rotate(angle: pi, child: zone)
-                              : zone,
-                        );
-                      }),
-                    ),
+              child: _PlayerButtonZone(
+                playerIndex: 0,
+                playerColor: widget.players[0].color,
+                buttonColors: _buttonColors,
+                colors: colors,
+                onTap: (bi) => _onColorTap(0, bi),
+                active: _roundActive,
+              ),
             ),
           ],
         ),
@@ -244,32 +245,46 @@ class _PlayerButtonZone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.all(4),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: playerColor.withValues(alpha: 0.3), width: 2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: playerColor.withValues(alpha: active ? 0.5 : 0.2),
+          width: 2,
+        ),
+        color: playerColor.withValues(alpha: 0.05),
       ),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 6,
-        mainAxisSpacing: 6,
-        children: List.generate(4, (i) {
-          if (i >= buttonColors.length) return const SizedBox();
-          return GestureDetector(
-            onTap: active ? () => onTap(i) : null,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              decoration: BoxDecoration(
-                color: active ? colors[buttonColors[i]] : colors[buttonColors[i]].withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-              ),
+      child: buttonColors.isEmpty
+          ? const SizedBox()
+          : GridView.count(
+              crossAxisCount: 4,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              children: List.generate(4, (i) {
+                if (i >= buttonColors.length) return const SizedBox();
+                return GestureDetector(
+                  onTap: active ? () => onTap(i) : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    decoration: BoxDecoration(
+                      color: active
+                          ? colors[buttonColors[i]]
+                          : colors[buttonColors[i]].withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: active ? [
+                        BoxShadow(
+                          color: colors[buttonColors[i]].withValues(alpha: 0.3),
+                          blurRadius: 8,
+                        ),
+                      ] : [],
+                    ),
+                  ),
+                );
+              }),
             ),
-          );
-        }),
-      ),
     );
   }
 }

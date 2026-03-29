@@ -14,6 +14,8 @@ class PingPongGame extends FlameGame with MultiTouchDragDetector {
   late _Ball ball;
   late List<int> scores;
   final int winScore = 5;
+  static const double _initialSpeed = 300;
+  static const double _maxSpeed = 800;
   bool _gameOver = false;
   final Map<int, int> _dragToPlayer = {};
 
@@ -134,11 +136,15 @@ class PingPongGame extends FlameGame with MultiTouchDragDetector {
       final paddle = paddles[i];
       if (ball.toRect().overlaps(paddle.toRect())) {
         ball.velocity.y = -ball.velocity.y;
-        // Speed up
-        ball.velocity *= 1.05;
+        // Speed up with each hit, capped at max
+        final currentSpeed = ball.velocity.length;
+        if (currentSpeed < _maxSpeed) {
+          final newSpeed = min(currentSpeed * 1.08, _maxSpeed);
+          ball.velocity = ball.velocity.normalized() * newSpeed;
+        }
         // Offset based on where ball hits paddle
         final hitPos = (ball.position.x - paddle.position.x) / paddle.size.x;
-        ball.velocity.x += (hitPos - 0.5) * 200;
+        ball.velocity.x += (hitPos - 0.5) * 150;
         // Push ball out of paddle
         if (i == 0) {
           // Bottom paddle - push ball up

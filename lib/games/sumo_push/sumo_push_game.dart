@@ -16,11 +16,15 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
   bool _gameOver = false;
   final Map<int, int> _dragToPlayer = {};
 
+  // Turn-based state
+  int currentPlayer = 0;
+  bool _waitingForSettle = false; // wait for pieces to stop before switching turns
+
   SumoPushGame({required this.players, required this.onGameEnd});
 
   static Widget widget({required List<Player> players}) {
     return GameWrapper(
-      gameName: 'Sumo Push',
+      gameName: 'Pen Fight',
       players: players,
       gameBuilder: (onEnd) => GameWidget(
         game: SumoPushGame(players: players, onGameEnd: onEnd),
@@ -38,12 +42,15 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
 
     add(_Arena(center: arenaCenter, radius: arenaRadius));
 
-    final angleStep = 2 * pi / players.length;
+    // Place P1 at bottom, P2 at top
+    final positions = [
+      arenaCenter + Vector2(0, arenaRadius * 0.45),  // P1 bottom
+      arenaCenter + Vector2(0, -arenaRadius * 0.45), // P2 top
+    ];
+
     sumos = List.generate(players.length, (i) {
-      final angle = angleStep * i - pi / 2;
-      final pos = arenaCenter + Vector2(cos(angle), sin(angle)) * (arenaRadius * 0.5);
       final sumo = _SumoPlayer(
-        position: pos,
+        position: positions[i].clone(),
         color: players[i].color,
         playerId: i,
         radius: 25,
@@ -51,6 +58,9 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
       add(sumo);
       return sumo;
     });
+
+    // Turn indicator
+    add(_TurnIndicator(game: this));
   }
 
   @override
@@ -58,18 +68,28 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
     super.update(dt);
     if (_gameOver) return;
 
+    bool anyMoving = false;
+
     for (final sumo in sumos) {
       if (!sumo.alive) continue;
 
       // Apply velocity with friction
       sumo.position += sumo.velocity * dt;
-      sumo.velocity *= 0.95;
+      sumo.velocity *= 0.94;
+
+      // Stop tiny velocities
+      if (sumo.velocity.length < 5) {
+        sumo.velocity = Vector2.zero();
+      } else {
+        anyMoving = true;
+      }
 
       // Check if out of arena
       final dist = sumo.position.distanceTo(arenaCenter);
       if (dist > arenaRadius + sumo.radius) {
         sumo.alive = false;
         _checkWin();
+        return;
       }
 
       // Collision with other sumos
@@ -85,11 +105,22 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
           // Transfer momentum
           final relVel = sumo.velocity - other.velocity;
           final impulse = normal * relVel.dot(normal);
-          sumo.velocity -= impulse * 0.8;
-          other.velocity += impulse * 0.8;
+          sumo.velocity -= impulse * 0.7;
+          other.velocity += impulse * 0.7;
         }
       }
     }
+
+    // After a fling, wait for all pieces to settle before switching turns
+    if (_waitingForSettle && !anyMoving) {
+      _waitingForSettle = false;
+      _switchTurn();
+    }
+  }
+
+  void _switchTurn() {
+    if (_gameOver) return;
+    currentPlayer = (currentPlayer + 1) % players.length;
   }
 
   void _checkWin() {
@@ -105,13 +136,14 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
 
   @override
   void onDragStart(int pointerId, DragStartInfo info) {
+    if (_waitingForSettle || _gameOver) return;
     final pos = info.eventPosition.global;
-    for (int i = 0; i < sumos.length; i++) {
-      if (!sumos[i].alive) continue;
-      if (sumos[i].position.distanceTo(pos) < 50) {
-        _dragToPlayer[pointerId] = i;
-        break;
-      }
+
+    // Only allow current player to drag their piece
+    final sumo = sumos[currentPlayer];
+    if (!sumo.alive) return;
+    if (sumo.position.distanceTo(pos) < 60) {
+      _dragToPlayer[pointerId] = currentPlayer;
     }
   }
 
@@ -119,13 +151,42 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
   void onDragEnd(int pointerId, DragEndInfo info) {
     final playerIdx = _dragToPlayer.remove(pointerId);
     if (playerIdx == null) return;
-    // Apply dash velocity from fling
-    sumos[playerIdx].velocity += info.velocity / 3;
+
+    // Cap the fling velocity — max power reduced to prevent one-shot kills
+    var vel = info.velocity;
+    final maxSpeed = 600.0;
+    if (vel.length > maxSpeed) {
+      vel = vel.normalized() * maxSpeed;
+    }
+    sumos[playerIdx].velocity += vel / 6;
+
+    // Wait for pieces to settle before switching
+    _waitingForSettle = true;
   }
 
   @override
   void onDragUpdate(int pointerId, DragUpdateInfo info) {
     // Visual feedback only
+  }
+
+  @override
+  void render(Canvas canvas) {
+    super.render(canvas);
+
+    // Active player glow around their piece
+    if (!_gameOver && !_waitingForSettle) {
+      final sumo = sumos[currentPlayer];
+      if (sumo.alive) {
+        canvas.drawCircle(
+          Offset(sumo.position.x, sumo.position.y),
+          sumo.radius + 8,
+          Paint()
+            ..color = sumo.color.withValues(alpha: 0.3)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3,
+        );
+      }
+    }
   }
 }
 
@@ -170,6 +231,36 @@ class _SumoPlayer extends PositionComponent {
   }
 }
 
+class _TurnIndicator extends PositionComponent {
+  final SumoPushGame game;
+
+  _TurnIndicator({required this.game});
+
+  @override
+  void render(Canvas canvas) {
+    if (game._gameOver) return;
+
+    final text = game._waitingForSettle
+        ? '...'
+        : 'P${game.currentPlayer + 1}\'s Turn';
+    final color = game.players[game.currentPlayer].color;
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color.withValues(alpha: 0.7),
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(canvas, Offset(game.size.x / 2 - tp.width / 2, 16));
+  }
+}
+
 class _Arena extends PositionComponent {
   final Vector2 center;
   final double radius;
@@ -178,7 +269,6 @@ class _Arena extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    // Outer ring
     canvas.drawCircle(
       Offset(center.x, center.y),
       radius,
@@ -194,7 +284,6 @@ class _Arena extends PositionComponent {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3,
     );
-    // Inner circle
     canvas.drawCircle(
       Offset(center.x, center.y),
       radius * 0.3,

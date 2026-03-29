@@ -36,13 +36,16 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
 
     final stripHeight = size.y / players.length;
     skaters = List.generate(players.length, (i) {
+      // P1 (i=0) at bottom strip, P2 (i=1) at top strip
+      final vi = players.length - 1 - i;
       return _Skater(
-        position: Vector2(60, stripHeight * i + stripHeight * 0.7),
+        position: Vector2(60, stripHeight * vi + stripHeight * 0.7),
         color: players[i].color,
         playerId: i,
-        groundY: stripHeight * i + stripHeight * 0.7,
-        stripTop: stripHeight * i,
+        groundY: stripHeight * vi + stripHeight * 0.7,
+        stripTop: stripHeight * vi,
         stripHeight: stripHeight,
+        visualIndex: vi,
       );
     });
   }
@@ -62,8 +65,9 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       final stripHeight = size.y / players.length;
       for (int i = 0; i < players.length; i++) {
         if (_rng.nextDouble() < 0.5) {
+          final vi = skaters[i].visualIndex;
           obstacles.add(_DashObstacle(
-            position: Vector2(size.x + 20, stripHeight * i + stripHeight * 0.7 - 10),
+            position: Vector2(size.x + 20, stripHeight * vi + stripHeight * 0.7 - 10),
             width: 15 + _rng.nextDouble() * 15,
             height: 10 + _rng.nextDouble() * 20,
             lane: i,
@@ -131,7 +135,8 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
 
     for (int i = 0; i < skaters.length; i++) {
       if (!skaters[i].alive) continue;
-      if (pos.y >= stripHeight * i && pos.y < stripHeight * (i + 1)) {
+      final vi = skaters[i].visualIndex;
+      if (pos.y >= stripHeight * vi && pos.y < stripHeight * (vi + 1)) {
         if (!skaters[i].isJumping) {
           skaters[i].velocityY = -350;
           skaters[i].isJumping = true;
@@ -147,12 +152,14 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
 
     final stripHeight = size.y / players.length;
 
-    for (int i = 0; i < players.length; i++) {
-      final top = stripHeight * i;
-      final isTopPlayer = i == 1 && players.length > 1;
+    for (int pIdx = 0; pIdx < players.length; pIdx++) {
+      final skater = skaters[pIdx];
+      final vi = skater.visualIndex;
+      final top = stripHeight * vi;
+      // P2 (vi=0, top strip) gets rotated 180° for the facing player
+      final isRotated = vi == 0 && players.length > 1;
 
-      // For top player, rotate the entire strip 180° around its center
-      if (isTopPlayer) {
+      if (isRotated) {
         canvas.save();
         canvas.translate(size.x / 2, top + stripHeight / 2);
         canvas.rotate(pi);
@@ -160,7 +167,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       }
 
       // Strip background
-      if (i % 2 == 1) {
+      if (vi % 2 == 0 && players.length > 1) {
         canvas.drawRect(
           Rect.fromLTWH(0, top, size.x, stripHeight),
           Paint()..color = Colors.white.withValues(alpha: 0.03),
@@ -183,9 +190,9 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
         );
       }
 
-      // Obstacles for this strip
+      // Obstacles for this player
       for (final obs in obstacles) {
-        if (obs.lane != i) continue;
+        if (obs.lane != pIdx) continue;
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTWH(obs.position.x, obs.position.y, obs.width, obs.height),
@@ -195,8 +202,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
         );
       }
 
-      // Skater for this strip
-      final skater = skaters[i];
+      // Skater
       if (skater.alive) {
         canvas.save();
         canvas.translate(skater.position.x, skater.position.y);
@@ -218,7 +224,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
         canvas.restore();
       }
 
-      if (isTopPlayer) {
+      if (isRotated) {
         canvas.restore();
       }
     }
@@ -248,6 +254,8 @@ class _Skater {
   bool alive = true;
   double distance = 0;
 
+  int visualIndex;
+
   _Skater({
     required this.position,
     required this.color,
@@ -255,6 +263,7 @@ class _Skater {
     required this.groundY,
     required this.stripTop,
     required this.stripHeight,
+    required this.visualIndex,
   });
 }
 

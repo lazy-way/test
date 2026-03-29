@@ -140,7 +140,12 @@ class AirHockeyGame extends FlameGame with MultiTouchDragDetector {
     final dist = mallet.position.distanceTo(puck.position);
     if (dist < mallet.radius + puck.radius) {
       final normal = (puck.position - mallet.position).normalized();
-      puck.velocity = normal * max(puck.velocity.length, 400);
+      // Transfer mallet velocity to puck — harder hit = faster puck
+      final hitSpeed = mallet.velocity.length;
+      final baseSpeed = max(puck.velocity.length * 0.3, 100.0);
+      final transferSpeed = (hitSpeed * 0.8).clamp(0, 1200.0);
+      final totalSpeed = (baseSpeed + transferSpeed).clamp(150.0, 1400.0);
+      puck.velocity = normal * totalSpeed;
       puck.position = mallet.position + normal * (mallet.radius + puck.radius + 1);
     }
   }
@@ -203,13 +208,26 @@ class _Mallet extends PositionComponent {
   final Color color;
   final double radius;
   final bool isAI;
+  Vector2 velocity = Vector2.zero();
+  Vector2 _prevPosition = Vector2.zero();
 
   _Mallet({
     required Vector2 position,
     required this.color,
     required this.radius,
     this.isAI = false,
-  }) : super(position: position, anchor: Anchor.center);
+  }) : super(position: position, anchor: Anchor.center) {
+    _prevPosition = position.clone();
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    if (dt > 0) {
+      velocity = (position - _prevPosition) / dt;
+    }
+    _prevPosition = position.clone();
+  }
 
   @override
   void render(Canvas canvas) {

@@ -91,19 +91,34 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
         speedInput = joy.delta.y; // Down from top player's view = positive = faster
       }
 
-      // Clamp speed: idle=80, full=300
-      car.speed = 80 + (speedInput.clamp(0, 1)) * 220;
+      // Speed: 0 when idle, up to 300 at full push
+      car.speed = (speedInput.clamp(0.0, 1.0)) * 300;
 
       // Steering from joystick X
       car.steering = joy.delta.x * 2.0;
 
-      car.trackAngle += car.speed * dt / (max(rx, ry));
+      // Check if car is on grass (outside track band)
+      final dx = car.position.x - cx;
+      final dy = car.position.y - cy;
+      // Normalized distance from ellipse center line (1.0 = on the ellipse)
+      final ellipseDist = sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+      // Track band is ~25px wide on each side of the ellipse (strokeWidth=50)
+      // In normalized space, that's roughly 25/avg(rx,ry)
+      final trackHalfWidth = 25.0 / ((rx + ry) / 2);
+      final onGrass = (ellipseDist - 1.0).abs() > trackHalfWidth;
+      car.onGrass = onGrass;
+
+      // Slow down on grass
+      final effectiveSpeed = onGrass ? car.speed * 0.5 : car.speed;
+
+      car.trackAngle += effectiveSpeed * dt / (max(rx, ry));
       car.trackAngle += car.steering * dt * 0.5;
 
       final targetX = cx + rx * cos(car.trackAngle);
       final targetY = cy + ry * sin(car.trackAngle);
-      car.position.x += (targetX - car.position.x) * 0.1;
-      car.position.y += (targetY - car.position.y) * 0.1;
+      // Looser tracking so steering actually moves car off-track
+      car.position.x += (targetX - car.position.x) * 0.08;
+      car.position.y += (targetY - car.position.y) * 0.08;
       car.angle = car.trackAngle + pi / 2;
 
       // Lap counting
@@ -244,12 +259,12 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
         const Rect.fromLTWH(2, -3, 4, 6),
         Paint()..color = Colors.white.withValues(alpha: 0.5),
       );
-      // Glow
+      // Glow (green tint on grass)
       canvas.drawCircle(
         Offset.zero,
         10,
         Paint()
-          ..color = car.color.withValues(alpha: 0.3)
+          ..color = (car.onGrass ? Colors.green : car.color).withValues(alpha: 0.3)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
 
@@ -324,6 +339,7 @@ class _RaceCar {
   double steering = 0;
   int laps = 0;
   double lastLapAngle;
+  bool onGrass = false;
 
   _RaceCar({
     required this.position,
