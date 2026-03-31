@@ -35,25 +35,38 @@ class _ColorMatchPlayArea extends StatefulWidget {
 
 class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
     with TickerProviderStateMixin {
-  static const colors = [Colors.red, Colors.blue, Colors.green, Colors.yellow, Colors.purple, Colors.orange];
-  static const colorNames = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE', 'ORANGE'];
+  static const colors = [
+    Colors.red, Colors.blue, Colors.green, Colors.yellow,
+    Colors.purple, Colors.orange, Colors.pink, Colors.cyan,
+    Colors.teal, Colors.amber,
+  ];
+  static const colorNames = [
+    'RED', 'BLUE', 'GREEN', 'YELLOW',
+    'PURPLE', 'ORANGE', 'PINK', 'CYAN',
+    'TEAL', 'AMBER',
+  ];
 
   final Random _random = Random();
   int _round = 0;
   final int _totalRounds = 15;
   int _targetColorIndex = 0;
-  List<int> _buttonColors = [];
+  List<int> _buttonColors = []; // 8 options
   late List<int> _scores;
-  bool _showTarget = false;
-  bool _roundActive = false;
   bool _gameOver = false;
   bool _started = false;
+
+  // Round phases
+  // 1: showColor - target color visible, options hidden, countdown running
+  // 2: selectColor - target stays visible, options shown, players can tap
+  // 3: pause - brief pause between rounds
+  String _phase = 'idle';
+  int _countdown = 3;
 
   @override
   void initState() {
     super.initState();
     _scores = List.filled(widget.players.length, 0);
-    // Delay first round to wait for GameWrapper's 3-2-1 countdown (~3.5s)
+    // Wait for GameWrapper's 3-2-1-GO countdown
     Future.delayed(const Duration(milliseconds: 3800), () {
       if (mounted) {
         _started = true;
@@ -72,60 +85,74 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
       return;
     }
 
+    // Pick target color
+    _targetColorIndex = _random.nextInt(colors.length);
+
+    // Generate 8 button colors: 1 correct + 7 different wrong colors
+    final wrongColors = <int>[];
+    for (int c = 0; c < colors.length; c++) {
+      if (c != _targetColorIndex) wrongColors.add(c);
+    }
+    wrongColors.shuffle(_random);
+    _buttonColors = wrongColors.sublist(0, 7);
+    // Insert the correct answer at a random position
+    _buttonColors.insert(_random.nextInt(8), _targetColorIndex);
+
     setState(() {
       _round++;
-      _targetColorIndex = _random.nextInt(colors.length);
-      _buttonColors = List.generate(4, (_) => _random.nextInt(colors.length));
-      _buttonColors[_random.nextInt(4)] = _targetColorIndex;
-      _showTarget = true;
-      _roundActive = false;
+      _phase = 'showColor';
+      _countdown = 3;
     });
 
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted && !_gameOver) {
-        setState(() {
-          _showTarget = false;
-          _roundActive = true;
-        });
-      }
+    // Start 3-2-1 countdown
+    _runCountdown();
+  }
+
+  void _runCountdown() async {
+    for (int i = 3; i >= 1; i--) {
+      if (!mounted || _gameOver) return;
+      setState(() => _countdown = i);
+      await Future.delayed(const Duration(milliseconds: 800));
+    }
+    if (!mounted || _gameOver) return;
+    setState(() {
+      _phase = 'selectColor';
     });
   }
 
   void _onColorTap(int playerIndex, int buttonIndex) {
-    if (!_roundActive || _gameOver) return;
+    if (_phase != 'selectColor' || _gameOver) return;
 
     if (_buttonColors[buttonIndex] == _targetColorIndex) {
       setState(() {
         _scores[playerIndex] += 1;
-        _roundActive = false;
+        _phase = 'pause';
       });
-      Future.delayed(const Duration(milliseconds: 500), _nextRound);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _nextRound();
+      });
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final playerCount = widget.players.length;
+    final showOptions = _phase == 'selectColor';
 
     return Container(
       color: const Color(0xFF0a0a2e),
       child: SafeArea(
         child: Column(
           children: [
-            // Round counter and scores
+            // Header: round + scores
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     _started ? 'Round $_round/$_totalRounds' : 'Get Ready...',
-                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14),
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
                   ),
                   Row(
                     children: List.generate(playerCount, (i) => Padding(
@@ -152,71 +179,110 @@ class _ColorMatchPlayAreaState extends State<_ColorMatchPlayArea>
               ),
             ),
 
-            // P2 buttons at TOP (rotated 180° for facing player)
+            // P2 options at TOP (rotated, hidden until countdown done)
             if (playerCount > 1)
               Expanded(
                 flex: 3,
-                child: Transform.rotate(
-                  angle: pi,
-                  child: _PlayerButtonZone(
-                    playerIndex: 1,
-                    playerColor: widget.players[1].color,
-                    buttonColors: _buttonColors,
-                    colors: colors,
-                    onTap: (bi) => _onColorTap(1, bi),
-                    active: _roundActive,
-                  ),
-                ),
+                child: showOptions
+                    ? Transform.rotate(
+                        angle: pi,
+                        child: _PlayerButtonZone(
+                          playerIndex: 1,
+                          playerColor: widget.players[1].color,
+                          buttonColors: _buttonColors,
+                          colors: colors,
+                          onTap: (bi) => _onColorTap(1, bi),
+                        ),
+                      )
+                    : const SizedBox.expand(),
               ),
 
-            // Color flash in CENTER
+            // CENTER: target color + countdown
             Expanded(
               flex: 2,
               child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: _showTarget ? colors[_targetColorIndex] : Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: _showTarget ? [
-                      BoxShadow(
-                        color: colors[_targetColorIndex].withValues(alpha: 0.5),
-                        blurRadius: 30,
-                        spreadRadius: 5,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Target color box
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        color: (_phase == 'showColor' || _phase == 'selectColor')
+                            ? colors[_targetColorIndex]
+                            : Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: (_phase == 'showColor' || _phase == 'selectColor')
+                            ? [
+                                BoxShadow(
+                                  color: colors[_targetColorIndex].withValues(alpha: 0.5),
+                                  blurRadius: 25,
+                                  spreadRadius: 3,
+                                ),
+                              ]
+                            : [],
                       ),
-                    ] : [],
-                  ),
-                  child: Center(
-                    child: Text(
-                      !_started
-                          ? ''
-                          : _showTarget
+                      child: Center(
+                        child: Text(
+                          (_phase == 'showColor' || _phase == 'selectColor')
                               ? colorNames[_targetColorIndex]
-                              : '?',
-                      style: GoogleFonts.fredoka(
-                        fontWeight: FontWeight.w700,
-                        fontSize: _showTarget ? 16 : 40,
-                        color: Colors.white,
+                              : '',
+                          style: GoogleFonts.fredoka(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    // Countdown or "GO!"
+                    if (_phase == 'showColor')
+                      Text(
+                        '$_countdown',
+                        style: GoogleFonts.fredoka(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 32,
+                          color: Colors.white.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    if (_phase == 'selectColor')
+                      Text(
+                        'TAP NOW!',
+                        style: GoogleFonts.fredoka(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          color: const Color(0xFF2ED573),
+                        ),
+                      ),
+                    if (_phase == 'pause')
+                      Text(
+                        'Correct!',
+                        style: GoogleFonts.fredoka(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          color: const Color(0xFFFFC312),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
 
-            // P1 buttons at BOTTOM (normal orientation)
+            // P1 options at BOTTOM (hidden until countdown done)
             Expanded(
               flex: 3,
-              child: _PlayerButtonZone(
-                playerIndex: 0,
-                playerColor: widget.players[0].color,
-                buttonColors: _buttonColors,
-                colors: colors,
-                onTap: (bi) => _onColorTap(0, bi),
-                active: _roundActive,
-              ),
+              child: showOptions
+                  ? _PlayerButtonZone(
+                      playerIndex: 0,
+                      playerColor: widget.players[0].color,
+                      buttonColors: _buttonColors,
+                      colors: colors,
+                      onTap: (bi) => _onColorTap(0, bi),
+                    )
+                  : const SizedBox.expand(),
             ),
           ],
         ),
@@ -231,7 +297,6 @@ class _PlayerButtonZone extends StatelessWidget {
   final List<int> buttonColors;
   final List<Color> colors;
   final ValueChanged<int> onTap;
-  final bool active;
 
   const _PlayerButtonZone({
     required this.playerIndex,
@@ -239,52 +304,42 @@ class _PlayerButtonZone extends StatelessWidget {
     required this.buttonColors,
     required this.colors,
     required this.onTap,
-    required this.active,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: playerColor.withValues(alpha: active ? 0.5 : 0.2),
-          width: 2,
-        ),
+        border: Border.all(color: playerColor.withValues(alpha: 0.4), width: 2),
         color: playerColor.withValues(alpha: 0.05),
       ),
-      child: buttonColors.isEmpty
-          ? const SizedBox()
-          : GridView.count(
-              crossAxisCount: 4,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              children: List.generate(4, (i) {
-                if (i >= buttonColors.length) return const SizedBox();
-                return GestureDetector(
-                  onTap: active ? () => onTap(i) : null,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    decoration: BoxDecoration(
-                      color: active
-                          ? colors[buttonColors[i]]
-                          : colors[buttonColors[i]].withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: active ? [
-                        BoxShadow(
-                          color: colors[buttonColors[i]].withValues(alpha: 0.3),
-                          blurRadius: 8,
-                        ),
-                      ] : [],
-                    ),
+      child: GridView.count(
+        crossAxisCount: 4,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 6,
+        mainAxisSpacing: 6,
+        children: List.generate(min(8, buttonColors.length), (i) {
+          return GestureDetector(
+            onTap: () => onTap(i),
+            child: Container(
+              decoration: BoxDecoration(
+                color: colors[buttonColors[i]],
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors[buttonColors[i]].withValues(alpha: 0.3),
+                    blurRadius: 6,
                   ),
-                );
-              }),
+                ],
+              ),
             ),
+          );
+        }),
+      ),
     );
   }
 }
