@@ -1,4 +1,3 @@
-import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import '../models/player.dart';
 import '../models/game_result.dart';
@@ -9,12 +8,14 @@ class GameWrapper extends StatefulWidget {
   final String gameName;
   final List<Player> players;
   final Widget Function(VoidCallback onGameEnd) gameBuilder;
+  final SoloGameSummary? Function()? resultSummaryBuilder;
 
   const GameWrapper({
     super.key,
     required this.gameName,
     required this.players,
     required this.gameBuilder,
+    this.resultSummaryBuilder,
   });
 
   @override
@@ -25,7 +26,6 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
   bool _showCountdown = true;
   bool _showResult = false;
   int _countdownValue = 3;
-  GameResult? _result;
   late AnimationController _countdownAnimController;
   late Animation<double> _countdownScale;
 
@@ -132,6 +132,8 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
           if (_showResult)
             _ResultOverlay(
               players: widget.players,
+              gameName: widget.gameName,
+              summary: widget.resultSummaryBuilder?.call(),
               onPlayAgain: () {
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
@@ -139,6 +141,7 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
                       gameName: widget.gameName,
                       players: widget.players,
                       gameBuilder: widget.gameBuilder,
+                      resultSummaryBuilder: widget.resultSummaryBuilder,
                     ),
                   ),
                 );
@@ -179,11 +182,15 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
 
 class _ResultOverlay extends StatefulWidget {
   final List<Player> players;
+  final String gameName;
+  final SoloGameSummary? summary;
   final VoidCallback onPlayAgain;
   final VoidCallback onExit;
 
   const _ResultOverlay({
     required this.players,
+    required this.gameName,
+    required this.summary,
     required this.onPlayAgain,
     required this.onExit,
   });
@@ -221,6 +228,151 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
 
   @override
   Widget build(BuildContext context) {
+    final soloSummary = widget.players.length == 1 ? widget.summary : null;
+
+    if (soloSummary != null) {
+      return AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Opacity(
+            opacity: _fadeAnim.value,
+            child: Container(
+              color: Colors.black87,
+              child: Center(
+                child: Transform.scale(
+                  scale: _scaleAnim.value,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 360),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(28),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1A1A2E), Color(0xFF101525)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          border: Border.all(
+                            color: soloSummary.color.withValues(alpha: 0.35),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: soloSummary.color.withValues(alpha: 0.18),
+                              blurRadius: 30,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(soloSummary.icon, size: 72, color: soloSummary.color),
+                            const SizedBox(height: 14),
+                            Text(
+                              soloSummary.title,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.fredoka(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 32,
+                                color: soloSummary.color,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              soloSummary.subtitle,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 15,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            ...soloSummary.stats.map((stat) => Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    color: Colors.white.withValues(alpha: 0.05),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.08),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        stat.label,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: Colors.white60,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        stat.value,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                            const SizedBox(height: 18),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ElevatedButton(
+                                  onPressed: widget.onPlayAgain,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2ED573),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 28,
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(25),
+                                    ),
+                                  ),
+                                  child: Text('PLAY AGAIN', style: AppTheme.buttonStyle),
+                                ),
+                                const SizedBox(width: 14),
+                                ElevatedButton(
+                                  onPressed: widget.onExit,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFF4757),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 28,
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(25),
+                                    ),
+                                  ),
+                                  child: Text('EXIT', style: AppTheme.buttonStyle),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     // Sort players by score
     final sorted = List<Player>.from(widget.players)
       ..sort((a, b) => b.score.compareTo(a.score));
