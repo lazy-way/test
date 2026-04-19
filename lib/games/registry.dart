@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/models/game_config.dart';
 import '../core/models/game_category.dart';
-import '../core/models/player.dart';
 import '../core/providers/player_provider.dart';
 
 import 'ping_pong/ping_pong_game.dart';
@@ -20,6 +19,8 @@ import 'skateboard_dash/skateboard_dash_game.dart';
 import 'basketball_hoops/basketball_hoops_game.dart';
 import 'dice_war/dice_war_game.dart';
 import 'dot_capture/dot_capture_game.dart';
+import 'sudoku/sudoku_game.dart';
+import 'minesweeper/minesweeper_game.dart';
 
 class GameRegistry {
   static const List<GameConfig> allGames = [
@@ -150,6 +151,26 @@ class GameRegistry {
       maxPlayers: 2,
       accentColor: Color(0xFFFD79A8),
     ),
+    GameConfig(
+      id: 'sudoku',
+      name: 'Sudoku',
+      description: 'Solve a 9x9 logic grid',
+      icon: Icons.apps_rounded,
+      category: GameCategory.puzzle,
+      minPlayers: 1,
+      maxPlayers: 1,
+      accentColor: Color(0xFF5DD39E),
+    ),
+    GameConfig(
+      id: 'minesweeper',
+      name: 'Minesweeper',
+      description: 'Clear the board, avoid mines',
+      icon: Icons.flag_circle_rounded,
+      category: GameCategory.puzzle,
+      minPlayers: 1,
+      maxPlayers: 1,
+      accentColor: Color(0xFF4DD0E1),
+    ),
 
     // Strategy
     GameConfig(
@@ -218,6 +239,10 @@ class GameRegistry {
         return DiceWarGame.widget(players: players);
       case 'dot_capture':
         return DotCaptureGame.widget(players: players);
+      case 'sudoku':
+        return SudokuGame.widget(players: players);
+      case 'minesweeper':
+        return MinesweeperGame.widget(players: players);
       default:
         return const Scaffold(body: Center(child: Text('Game not found')));
     }

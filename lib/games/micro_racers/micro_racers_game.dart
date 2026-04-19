@@ -6,6 +6,11 @@ import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
 class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
+  static const double _trackStrokeWidth = 50.0;
+  static const double _carHalfWidth = 8.0;
+  static const double _carHalfHeight = 5.0;
+  static const double _trackSpeed = 300.0;
+
   final List<Player> players;
   final VoidCallback onGameEnd;
 
@@ -44,7 +49,7 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
         color: players[i].color,
         playerId: i,
         angle: startAngle + pi / 2,
-        trackAngle: startAngle,
+        lastAngleSample: startAngle,
       );
     });
 
@@ -81,50 +86,48 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
       final car = cars[i];
       final joy = joysticks[i];
 
-      // Speed from joystick Y: pushing forward = faster
-      // For bottom player (i=0): pushing UP (negative delta.y) = faster
-      // For top player (i=1): pushing DOWN (positive delta.y) = faster (inverted view)
-      double speedInput;
-      if (i == 0) {
-        speedInput = -joy.delta.y; // Up = positive = faster
-      } else {
-        speedInput = joy.delta.y; // Down from top player's view = positive = faster
-      }
-
-      // Speed: 0 when idle, up to 300 at full push
-      car.speed = (speedInput.clamp(0.0, 1.0)) * 300;
-
-      // Steering from joystick X
-      car.steering = joy.delta.x * 2.0;
+      final verticalInput = i == 0 ? -joy.delta.y : joy.delta.y;
+      final horizontalInput = i == 0 ? joy.delta.x : -joy.delta.x;
+      final movementInput = Vector2(horizontalInput, -verticalInput);
+      car.speed = movementInput.length.clamp(0.0, 1.0) * _trackSpeed;
 
       // Check if car is on grass (outside track band)
       final dx = car.position.x - cx;
       final dy = car.position.y - cy;
       // Normalized distance from ellipse center line (1.0 = on the ellipse)
       final ellipseDist = sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
-      // Track band is ~25px wide on each side of the ellipse (strokeWidth=50)
-      // In normalized space, that's roughly 25/avg(rx,ry)
-      final trackHalfWidth = 25.0 / ((rx + ry) / 2);
+      final trackHalfWidth = (_trackStrokeWidth / 2) / ((rx + ry) / 2);
       final onGrass = (ellipseDist - 1.0).abs() > trackHalfWidth;
       car.onGrass = onGrass;
 
       // Slow down on grass
       final effectiveSpeed = onGrass ? car.speed * 0.5 : car.speed;
+      if (movementInput.length2 > 0) {
+        final delta = movementInput.normalized() * effectiveSpeed * dt;
+        car.position += delta;
+        car.angle = atan2(delta.y, delta.x) + pi / 2;
+      }
 
-      car.trackAngle += effectiveSpeed * dt / (max(rx, ry));
-      car.trackAngle += car.steering * dt * 0.5;
+      car.position.x = car.position.x.clamp(_carHalfWidth, size.x - _carHalfWidth);
+      car.position.y = car.position.y.clamp(_carHalfHeight, size.y - _carHalfHeight);
 
-      final targetX = cx + rx * cos(car.trackAngle);
-      final targetY = cy + ry * sin(car.trackAngle);
-      // Looser tracking so steering actually moves car off-track
-      car.position.x += (targetX - car.position.x) * 0.08;
-      car.position.y += (targetY - car.position.y) * 0.08;
-      car.angle = car.trackAngle + pi / 2;
+      final normalizedDx = (car.position.x - cx) / rx;
+      final normalizedDy = (car.position.y - cy) / ry;
+      final angleSample = atan2(normalizedDy, normalizedDx);
+      final normalizedRadius = sqrt(
+        normalizedDx * normalizedDx + normalizedDy * normalizedDy,
+      );
 
-      // Lap counting
-      if (car.trackAngle - car.lastLapAngle >= 2 * pi) {
+      if (normalizedRadius > 0.35 && movementInput.length2 > 0) {
+        final angleDelta = _normalizeAngleDelta(angleSample - car.lastAngleSample);
+        if (angleDelta.abs() < 1.0) {
+          car.unwrappedAngleProgress += angleDelta;
+        }
+      }
+      car.lastAngleSample = angleSample;
+
+      while (car.unwrappedAngleProgress >= (car.laps + 1) * 2 * pi) {
         car.laps++;
-        car.lastLapAngle = car.trackAngle;
         if (car.laps >= lapsToWin) {
           _gameOver = true;
           for (int j = 0; j < players.length; j++) {
@@ -135,6 +138,16 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
         }
       }
     }
+  }
+
+  double _normalizeAngleDelta(double delta) {
+    while (delta > pi) {
+      delta -= 2 * pi;
+    }
+    while (delta < -pi) {
+      delta += 2 * pi;
+    }
+    return delta;
   }
 
   @override
@@ -218,7 +231,7 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
       Paint()
         ..color = const Color(0xFF555555)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 50,
+        ..strokeWidth = _trackStrokeWidth,
     );
 
     // Track borders
@@ -250,7 +263,7 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
 
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          const Rect.fromLTWH(-8, -5, 16, 10),
+          const Rect.fromLTWH(-_carHalfWidth, -_carHalfHeight, _carHalfWidth * 2, _carHalfHeight * 2),
           const Radius.circular(3),
         ),
         Paint()..color = car.color,
@@ -334,11 +347,10 @@ class _RaceCar {
   Color color;
   int playerId;
   double angle;
-  double trackAngle;
   double speed = 0;
-  double steering = 0;
   int laps = 0;
-  double lastLapAngle;
+  double lastAngleSample;
+  double unwrappedAngleProgress = 0;
   bool onGrass = false;
 
   _RaceCar({
@@ -346,8 +358,8 @@ class _RaceCar {
     required this.color,
     required this.playerId,
     required this.angle,
-    required this.trackAngle,
-  }) : lastLapAngle = trackAngle;
+    required this.lastAngleSample,
+  });
 }
 
 class _Joystick {
