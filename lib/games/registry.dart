@@ -9,7 +9,6 @@ import 'air_hockey/air_hockey_game.dart';
 import 'tank_battle/tank_battle_game.dart';
 import 'sumo_push/sumo_push_game.dart';
 import 'color_match/color_match_game.dart';
-import 'snake_arena/snake_arena_game.dart';
 import 'micro_racers/micro_racers_game.dart';
 import 'fruit_slash/fruit_slash_game.dart';
 import 'memory_cards/memory_cards_game.dart';
@@ -171,18 +170,6 @@ class GameRegistry {
       maxPlayers: 1,
       accentColor: Color(0xFF4DD0E1),
     ),
-
-    // Strategy
-    GameConfig(
-      id: 'snake_arena',
-      name: 'Snake Arena',
-      description: 'Classic snake battle',
-      icon: Icons.route,
-      category: GameCategory.strategy,
-      minPlayers: 2,
-      maxPlayers: 2,
-      accentColor: Color(0xFF2ED573),
-    ),
     GameConfig(
       id: 'dice_war',
       name: 'Dice War',
@@ -219,8 +206,6 @@ class GameRegistry {
         return SumoPushGame.widget(players: players);
       case 'color_match':
         return ColorMatchGame.widget(players: players);
-      case 'snake_arena':
-        return SnakeArenaGame.widget(players: players);
       case 'micro_racers':
         return MicroRacersGame.widget(players: players);
       case 'fruit_slash':
