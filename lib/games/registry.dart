@@ -60,7 +60,7 @@ class GameRegistry {
     GameConfig(
       id: 'tank_battle',
       name: 'Tank Battle',
-      description: 'Top-down tank warfare',
+      description: 'Side-view artillery duel',
       icon: Icons.gps_fixed,
       category: GameCategory.action,
       minPlayers: 2,

@@ -1,44 +1,57 @@
-import 'package:flame/game.dart';
+import 'dart:math';
+
 import 'package:flame/components.dart';
 import 'package:flame/events.dart';
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import 'dart:math';
+import 'package:flutter/services.dart';
+
 import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
-class TankBattleGame extends FlameGame with MultiTouchDragDetector {
+class TankBattleGame extends FlameGame with MultiTouchTapDetector {
+  TankBattleGame({required this.players, required this.onGameEnd});
+
   final List<Player> players;
   final VoidCallback onGameEnd;
 
-  late List<_Tank> tanks;
-  final List<_Projectile> projectiles = [];
-  bool _gameOver = false;
+  static const double gravity = 420;
+  static const double minPower = 220;
+  static const double maxPower = 620;
+  static const double barrelLength = 28;
+  static const double hitRadius = 28;
+  static const double explosionRadius = 26;
+  static const double craterRadius = 36;
+  static const double tankGroundOffset = 18;
+  static const int targetHitsToWin = 3;
 
-  // Turn-based
-  int currentPlayer = 0;
-  bool _waitingForProjectile = false;
+  final Random _random = Random();
+  final List<_Projectile> _projectiles = [];
+  final List<_Explosion> _explosions = [];
 
-  // Aiming state
-  int? _aimingPointerId;
-  Vector2? _aimStart;
-  Vector2? _aimCurrent;
-  double _aimAngle = 0;
-  double _aimPower = 0;
-
-  // Terrain
+  late List<_Tank> _tanks;
   late List<double> terrain;
-  static const double gravity = 400;
-  static const double maxPower = 600;
+  late List<double> _terrainPreset;
+  late int _terrainVariantIndex;
+  late List<int> _hits;
 
-  TankBattleGame({required this.players, required this.onGameEnd});
+  int currentPlayer = 0;
+  bool _gameOver = false;
+  double _phaseTimer = 0;
+  double _selectedAngle = 0;
+  double _selectedPower = minPower;
+  _TurnPhase _turnPhase = _TurnPhase.selectDirection;
 
   static Widget widget({required List<Player> players}) {
-    return GameWrapper(
-      gameName: 'Tank Battle',
-      players: players,
-      gameBuilder: (onEnd) => GameWidget(
-        game: TankBattleGame(players: players, onGameEnd: onEnd),
-        backgroundBuilder: (context) => Container(color: const Color(0xFF1a2a1a)),
+    return _TankBattleLandscapeScope(
+      child: GameWrapper(
+        gameName: 'Tank Battle',
+        players: players,
+        gameBuilder: (onEnd) => GameWidget(
+          game: TankBattleGame(players: players, onGameEnd: onEnd),
+          backgroundBuilder: (context) =>
+              Container(color: const Color(0xFF10212f)),
+        ),
       ),
     );
   }
@@ -46,231 +59,316 @@ class TankBattleGame extends FlameGame with MultiTouchDragDetector {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    _hits = List<int>.filled(players.length, 0);
+    _generateTerrain();
+    _spawnTanks();
+    _startTurn(resetAngle: true);
+  }
 
-    // Generate terrain (simple hilly ground)
-    final rng = Random(42);
-    final segments = (size.x / 4).ceil();
-    terrain = List.generate(segments + 1, (i) {
-      final x = i / segments;
-      // Base height + some hills
-      return size.y * 0.65 +
-          sin(x * pi * 2) * 30 +
-          sin(x * pi * 5) * 15 +
-          rng.nextDouble() * 10;
-    });
+  void _generateTerrain() {
+    final segments = max(80, (size.x / 10).round());
+    _terrainVariantIndex = _random.nextInt(_terrainPresets.length);
+    _terrainPreset = _terrainPresets[_terrainVariantIndex];
+    terrain = List<double>.filled(segments + 1, 0);
 
-    // Place tanks on terrain
-    final p1x = size.x * 0.2;
-    final p2x = size.x * 0.8;
-    tanks = [
+    for (int i = 0; i <= segments; i++) {
+      final t = i / segments;
+      final presetY = _samplePreset(_terrainPreset, t) * size.y;
+      final edgeFalloff = sin(t * pi).clamp(0.0, 1.0);
+      final noise = (_random.nextDouble() * 2 - 1) * 10 * edgeFalloff;
+      terrain[i] = (presetY + noise).clamp(size.y * 0.36, size.y * 0.82);
+    }
+
+    final spawnIndices = [
+      max(3, (segments * 0.15).round()),
+      min(segments - 3, (segments * 0.85).round()),
+    ];
+    for (final index in spawnIndices) {
+      final from = max(0, index - 4);
+      final to = min(segments, index + 4);
+      final average =
+          terrain.sublist(from, to + 1).reduce((a, b) => a + b) /
+          (to - from + 1);
+      for (int i = from; i <= to; i++) {
+        terrain[i] = average;
+      }
+    }
+  }
+
+  void _spawnTanks() {
+    final p1x = size.x * 0.16;
+    final p2x = size.x * 0.84;
+    _tanks = [
       _Tank(
-        position: Vector2(p1x, _getTerrainY(p1x) - 12),
+        position: Vector2(p1x, _tankYForX(p1x)),
         color: players[0].color,
         playerId: 0,
-        lives: 3,
         facingRight: true,
       ),
-      if (players.length > 1)
-        _Tank(
-          position: Vector2(p2x, _getTerrainY(p2x) - 12),
-          color: players[1].color,
-          playerId: 1,
-          lives: 3,
-          facingRight: false,
-        ),
+      _Tank(
+        position: Vector2(p2x, _tankYForX(p2x)),
+        color: players[1].color,
+        playerId: 1,
+        facingRight: false,
+      ),
     ];
 
-    for (final t in tanks) {
-      add(t);
+    for (final tank in _tanks) {
+      add(tank);
     }
+  }
+
+  double _samplePreset(List<double> preset, double t) {
+    final scaled = t * (preset.length - 1);
+    final index = scaled.floor().clamp(0, preset.length - 2);
+    final frac = scaled - index;
+    return preset[index] * (1 - frac) + preset[index + 1] * frac;
   }
 
   double _getTerrainY(double x) {
     final segments = terrain.length - 1;
-    final idx = (x / size.x * segments).clamp(0, segments - 1);
-    final i = idx.floor();
+    final normalized = (x / size.x).clamp(0.0, 1.0);
+    final idx = normalized * segments;
+    final i = idx.floor().clamp(0, segments - 1);
     final frac = idx - i;
-    return terrain[i] * (1 - frac) + terrain[min(i + 1, segments)] * frac;
+    return terrain[i] * (1 - frac) + terrain[i + 1] * frac;
   }
+
+  double _tankYForX(double x) => _getTerrainY(x) - tankGroundOffset;
 
   @override
   void update(double dt) {
     super.update(dt);
-    if (_gameOver) return;
+    if (_gameOver) {
+      return;
+    }
 
-    // Update projectiles
-    for (final proj in List.from(projectiles)) {
-      proj.velocity.y += gravity * dt;
-      proj.position += proj.velocity * dt;
-      proj.trail.add(proj.position.clone());
-      if (proj.trail.length > 50) proj.trail.removeAt(0);
+    _phaseTimer += dt;
+    _updateAimSweep();
 
-      // Hit terrain
-      final terrainY = _getTerrainY(proj.position.x);
-      if (proj.position.y >= terrainY) {
-        _onProjectileHit(proj);
+    for (final explosion in List<_Explosion>.from(_explosions)) {
+      explosion.life -= dt;
+      if (explosion.life <= 0) {
+        _explosions.remove(explosion);
+        remove(explosion);
+      }
+    }
+
+    for (final projectile in List<_Projectile>.from(_projectiles)) {
+      projectile.velocity.y += gravity * dt;
+      projectile.position += projectile.velocity * dt;
+      projectile.trail.add(projectile.position.clone());
+      if (projectile.trail.length > 40) {
+        projectile.trail.removeAt(0);
+      }
+
+      if (projectile.position.x < -50 ||
+          projectile.position.x > size.x + 50 ||
+          projectile.position.y > size.y + 50) {
+        _removeProjectile(projectile);
+        _endTurn();
         continue;
       }
 
-      // Off screen
-      if (proj.position.x < -50 || proj.position.x > size.x + 50 || proj.position.y > size.y + 50) {
-        projectiles.remove(proj);
-        remove(proj);
-        _endTurn();
+      final opponent = _tanks[1 - projectile.ownerId];
+      if (projectile.position.distanceTo(opponent.position) <= hitRadius) {
+        _resolveImpact(projectile, opponent.position.clone(), targetHit: true);
+        continue;
       }
+
+      final terrainY = _getTerrainY(projectile.position.x);
+      if (projectile.position.y >= terrainY) {
+        _resolveImpact(
+          projectile,
+          Vector2(projectile.position.x, terrainY),
+          targetHit: false,
+        );
+      }
+    }
+
+    for (final tank in _tanks) {
+      tank.position.y = _tankYForX(tank.position.x);
     }
   }
 
-  void _onProjectileHit(_Projectile proj) {
-    // Check damage to tanks
-    for (final tank in tanks) {
-      if (!tank.alive) continue;
-      final dist = tank.position.distanceTo(proj.position);
-      if (dist < 40) {
-        // Direct hit or splash
-        final damage = dist < 20 ? 2 : 1;
-        tank.lives -= damage;
-        if (tank.lives <= 0) {
-          tank.alive = false;
-        }
-      }
+  void _updateAimSweep() {
+    if (_turnPhase == _TurnPhase.selectDirection) {
+      final activeTank = _tanks[currentPlayer];
+      final minAngle = activeTank.facingRight ? -pi : 0.0;
+      final sweep = pi;
+      final cycle = 2.2;
+      final progress = (_phaseTimer % cycle) / cycle;
+      final pingPong = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+      _selectedAngle = minAngle + sweep * pingPong;
+      activeTank.turretAngle = _selectedAngle;
+    } else if (_turnPhase == _TurnPhase.selectPower) {
+      final cycle = 1.8;
+      final progress = (_phaseTimer % cycle) / cycle;
+      final pingPong = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+      _selectedPower = minPower + (maxPower - minPower) * pingPong;
     }
+  }
 
-    // Deform terrain (crater)
-    final craterX = proj.position.x;
-    final craterRadius = 25.0;
-    final segments = terrain.length - 1;
-    for (int i = 0; i <= segments; i++) {
-      final tx = i / segments * size.x;
-      final dist = (tx - craterX).abs();
-      if (dist < craterRadius) {
-        final depth = (1 - dist / craterRadius) * 12;
-        terrain[i] += depth;
-      }
-    }
-
-    projectiles.remove(proj);
-    remove(proj);
-
-    // Check win
-    final alive = tanks.where((t) => t.alive).toList();
-    if (alive.length <= 1) {
-      _gameOver = true;
-      for (int i = 0; i < players.length; i++) {
-        players[i].score = tanks[i].alive ? 1 : 0;
-      }
-      onGameEnd();
+  @override
+  void onTapDown(int pointerId, TapDownInfo info) {
+    if (_gameOver) {
       return;
+    }
+
+    switch (_turnPhase) {
+      case _TurnPhase.selectDirection:
+        _turnPhase = _TurnPhase.selectPower;
+        _phaseTimer = 0;
+        break;
+      case _TurnPhase.selectPower:
+        _fire();
+        break;
+      case _TurnPhase.projectileInFlight:
+      case _TurnPhase.gameOver:
+        break;
+    }
+  }
+
+  void _fire() {
+    final tank = _tanks[currentPlayer];
+    final direction = Vector2(cos(_selectedAngle), sin(_selectedAngle));
+    final start = tank.position + direction * barrelLength;
+    final projectile = _Projectile(
+      position: start,
+      velocity: direction * _selectedPower,
+      ownerId: currentPlayer,
+      color: tank.color,
+    );
+    tank.turretAngle = _selectedAngle;
+    _projectiles.add(projectile);
+    add(projectile);
+    _turnPhase = _TurnPhase.projectileInFlight;
+  }
+
+  void _resolveImpact(
+    _Projectile projectile,
+    Vector2 impact, {
+    required bool targetHit,
+  }) {
+    final ownerId = projectile.ownerId;
+    _removeProjectile(projectile);
+    _createExplosion(impact, _tanks[ownerId].color);
+    _deformTerrain(impact.x);
+
+    if (targetHit) {
+      _hits[ownerId] += 1;
+      if (_hits[ownerId] >= targetHitsToWin) {
+        _gameOver = true;
+        _turnPhase = _TurnPhase.gameOver;
+        for (int i = 0; i < players.length; i++) {
+          players[i].score = i == ownerId ? 1 : 0;
+        }
+        onGameEnd();
+        return;
+      }
     }
 
     _endTurn();
   }
 
+  void _createExplosion(Vector2 position, Color color) {
+    final explosion = _Explosion(position: position, color: color);
+    _explosions.add(explosion);
+    add(explosion);
+  }
+
+  void _deformTerrain(double impactX) {
+    final segments = terrain.length - 1;
+    for (int i = 0; i <= segments; i++) {
+      final tx = i / segments * size.x;
+      final distance = (tx - impactX).abs();
+      if (distance <= craterRadius) {
+        final ratio = 1 - distance / craterRadius;
+        terrain[i] = (terrain[i] + ratio * 8).clamp(
+          size.y * 0.34,
+          size.y * 0.85,
+        );
+      }
+    }
+  }
+
+  void _removeProjectile(_Projectile projectile) {
+    _projectiles.remove(projectile);
+    remove(projectile);
+  }
+
   void _endTurn() {
-    _waitingForProjectile = false;
-    // Switch to next alive player
-    do {
-      currentPlayer = (currentPlayer + 1) % players.length;
-    } while (!tanks[currentPlayer].alive && tanks.any((t) => t.alive));
+    currentPlayer = (currentPlayer + 1) % players.length;
+    _startTurn(resetAngle: true);
   }
 
-  void _fire() {
-    if (_waitingForProjectile || _gameOver) return;
-    final tank = tanks[currentPlayer];
-    if (!tank.alive) return;
-
-    final dir = Vector2(cos(_aimAngle), sin(_aimAngle));
-    final proj = _Projectile(
-      position: tank.position + dir * 25,
-      velocity: dir * _aimPower,
-      ownerId: currentPlayer,
-      color: tank.color,
-    );
-    projectiles.add(proj);
-    add(proj);
-    _waitingForProjectile = true;
-
-    // Update turret angle
-    tank.turretAngle = _aimAngle;
-  }
-
-  @override
-  void onDragStart(int pointerId, DragStartInfo info) {
-    if (_gameOver || _waitingForProjectile) return;
-    if (_aimingPointerId != null) return;
-
-    final pos = info.eventPosition.global;
-    final zone = _getPlayerZone(currentPlayer);
-    if (zone.contains(Offset(pos.x, pos.y))) {
-      _aimingPointerId = pointerId;
-      _aimStart = pos.clone();
-      _aimCurrent = pos.clone();
+  void _startTurn({required bool resetAngle}) {
+    _turnPhase = _TurnPhase.selectDirection;
+    _phaseTimer = 0;
+    _selectedPower = minPower;
+    if (resetAngle) {
+      _selectedAngle = _tanks[currentPlayer].facingRight
+          ? -pi / 4
+          : -3 * pi / 4;
     }
-  }
-
-  @override
-  void onDragUpdate(int pointerId, DragUpdateInfo info) {
-    if (pointerId != _aimingPointerId) return;
-    _aimCurrent = info.eventPosition.global;
-
-    final tank = tanks[currentPlayer];
-    final dragVec = _aimStart! - _aimCurrent!;
-
-    // Angle from tank to drag direction (pull back like slingshot)
-    _aimAngle = atan2(dragVec.y, dragVec.x);
-    // Power from drag distance
-    _aimPower = (dragVec.length * 3).clamp(50, maxPower);
-
-    tank.turretAngle = _aimAngle;
-  }
-
-  @override
-  void onDragEnd(int pointerId, DragEndInfo info) {
-    if (pointerId != _aimingPointerId) return;
-    _aimingPointerId = null;
-
-    if (_aimPower > 60) {
-      _fire();
-    }
-    _aimStart = null;
-    _aimCurrent = null;
-    _aimPower = 0;
-  }
-
-  Rect _getPlayerZone(int index) {
-    switch (players.length) {
-      case 1: return Rect.fromLTWH(0, 0, size.x, size.y);
-      case 2:
-        if (index == 0) return Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2);
-        return Rect.fromLTWH(0, 0, size.x, size.y / 2);
-      default: return Rect.fromLTWH(0, 0, size.x, size.y);
-    }
+    _tanks[currentPlayer].turretAngle = _selectedAngle;
   }
 
   @override
   void render(Canvas canvas) {
     super.render(canvas);
+    _renderSky(canvas);
+    _renderBackdrop(canvas);
+    _renderTerrain(canvas);
+    _renderTrails(canvas);
+    _renderAimPreview(canvas);
+    _renderHud(canvas);
+  }
 
-    // Sky gradient
+  void _renderSky(Canvas canvas) {
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.x, size.y),
       Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF0a1520), Color(0xFF1a3a2a)],
+          colors: [Color(0xFF86C8FF), Color(0xFFD7F1FF)],
         ).createShader(Rect.fromLTWH(0, 0, size.x, size.y)),
     );
+  }
 
-    // Terrain
-    final terrainPath = Path();
+  void _renderBackdrop(Canvas canvas) {
+    final hillPaint = Paint()..color = const Color(0x4438674d);
+    final ridgePath = Path()
+      ..moveTo(0, size.y)
+      ..quadraticBezierTo(
+        size.x * 0.18,
+        size.y * 0.5,
+        size.x * 0.42,
+        size.y * 0.62,
+      )
+      ..quadraticBezierTo(size.x * 0.66, size.y * 0.48, size.x, size.y * 0.68)
+      ..lineTo(size.x, size.y)
+      ..close();
+    canvas.drawPath(ridgePath, hillPaint);
+  }
+
+  void _renderTerrain(Canvas canvas) {
+    final terrainPath = Path()..moveTo(0, size.y);
+    final edgePath = Path()..moveTo(0, terrain.first);
     final segments = terrain.length - 1;
-    terrainPath.moveTo(0, size.y);
+
     for (int i = 0; i <= segments; i++) {
-      terrainPath.lineTo(i / segments * size.x, terrain[i]);
+      final x = i / segments * size.x;
+      terrainPath.lineTo(x, terrain[i]);
+      if (i > 0) {
+        edgePath.lineTo(x, terrain[i]);
+      }
     }
-    terrainPath.lineTo(size.x, size.y);
-    terrainPath.close();
+
+    terrainPath
+      ..lineTo(size.x, size.y)
+      ..close();
 
     canvas.drawPath(
       terrainPath,
@@ -278,212 +376,308 @@ class TankBattleGame extends FlameGame with MultiTouchDragDetector {
         ..shader = const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF2d5a27), Color(0xFF1a3a15)],
+          colors: [Color(0xFF8E6A3D), Color(0xFF5A4021)],
         ).createShader(Rect.fromLTWH(0, 0, size.x, size.y)),
     );
 
-    // Terrain edge line
-    final edgePath = Path();
-    edgePath.moveTo(0, terrain[0]);
+    final grassPath = Path()..moveTo(0, terrain.first);
     for (int i = 1; i <= segments; i++) {
-      edgePath.lineTo(i / segments * size.x, terrain[i]);
+      final x = i / segments * size.x;
+      grassPath.lineTo(x, terrain[i]);
     }
+    canvas.drawPath(
+      grassPath,
+      Paint()
+        ..color = const Color(0xFF78C850)
+        ..strokeWidth = 5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+
     canvas.drawPath(
       edgePath,
       Paint()
-        ..color = const Color(0xFF4a8a3a)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-
-    // Projectile trails
-    for (final proj in projectiles) {
-      if (proj.trail.length > 1) {
-        final trailPath = Path();
-        trailPath.moveTo(proj.trail.first.x, proj.trail.first.y);
-        for (int i = 1; i < proj.trail.length; i++) {
-          trailPath.lineTo(proj.trail[i].x, proj.trail[i].y);
-        }
-        canvas.drawPath(
-          trailPath,
-          Paint()
-            ..color = proj.color.withValues(alpha: 0.3)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..strokeCap = StrokeCap.round,
-        );
-      }
-    }
-
-    // Aim trajectory preview (dotted arc)
-    if (_aimingPointerId != null && _aimPower > 60) {
-      final tank = tanks[currentPlayer];
-      final dir = Vector2(cos(_aimAngle), sin(_aimAngle));
-      var px = tank.position.x + dir.x * 25;
-      var py = tank.position.y + dir.y * 25;
-      var vx = dir.x * _aimPower;
-      var vy = dir.y * _aimPower;
-      final dotPaint = Paint()
-        ..color = tank.color.withValues(alpha: 0.4)
-        ..style = PaintingStyle.fill;
-
-      for (int step = 0; step < 30; step++) {
-        vy += gravity * 0.03;
-        px += vx * 0.03;
-        py += vy * 0.03;
-        if (py > _getTerrainY(px) || px < 0 || px > size.x) break;
-        if (step % 2 == 0) {
-          canvas.drawCircle(Offset(px, py), 2, dotPaint);
-        }
-      }
-
-      // Power bar
-      final zone = _getPlayerZone(currentPlayer);
-      final barWidth = (_aimPower / maxPower) * 100;
-      final barY = currentPlayer == 0 ? zone.bottom - 30 : zone.top + 10;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.x / 2 - 52, barY, 104, 14),
-          const Radius.circular(7),
-        ),
-        Paint()..color = Colors.white.withValues(alpha: 0.1),
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(size.x / 2 - 50, barY + 2, barWidth, 10),
-          const Radius.circular(5),
-        ),
-        Paint()..color = tank.color.withValues(alpha: 0.7),
-      );
-    }
-
-    // Turn indicator
-    if (!_gameOver) {
-      final turnColor = players[currentPlayer].color;
-      final turnY = currentPlayer == 0 ? size.y - 50.0 : 30.0;
-      final tp = TextPainter(
-        text: TextSpan(
-          text: _waitingForProjectile
-              ? '...'
-              : 'P${currentPlayer + 1} — Drag to aim & fire!',
-          style: TextStyle(
-            color: turnColor.withValues(alpha: 0.6),
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      tp.layout();
-      tp.paint(canvas, Offset(size.x / 2 - tp.width / 2, turnY));
-    }
-
-    // Lives
-    for (int i = 0; i < tanks.length; i++) {
-      final y = i == 0 ? size.y - 16.0 : 8.0;
-      final x = i == 0 ? 12.0 : size.x - 80.0;
-      final tp = TextPainter(
-        text: TextSpan(
-          text: 'P${i + 1}: ${'♥' * max(0, tanks[i].lives)}',
-          style: TextStyle(
-            color: players[i].color,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      );
-      tp.layout();
-      tp.paint(canvas, Offset(x, y));
-    }
-
-    // Zone divider
-    canvas.drawLine(
-      Offset(0, size.y / 2),
-      Offset(size.x, size.y / 2),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.05)
-        ..strokeWidth = 1,
+        ..color = const Color(0x995C4324)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke,
     );
   }
+
+  void _renderTrails(Canvas canvas) {
+    for (final projectile in _projectiles) {
+      if (projectile.trail.length < 2) {
+        continue;
+      }
+      final path = Path()
+        ..moveTo(projectile.trail.first.x, projectile.trail.first.y);
+      for (int i = 1; i < projectile.trail.length; i++) {
+        path.lineTo(projectile.trail[i].x, projectile.trail[i].y);
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = projectile.color.withValues(alpha: 0.35)
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  void _renderAimPreview(Canvas canvas) {
+    if (_turnPhase != _TurnPhase.selectPower) {
+      return;
+    }
+
+    final tank = _tanks[currentPlayer];
+    final direction = Vector2(cos(_selectedAngle), sin(_selectedAngle));
+    double px = tank.position.x + direction.x * barrelLength;
+    double py = tank.position.y + direction.y * barrelLength;
+    double vx = direction.x * _selectedPower;
+    double vy = direction.y * _selectedPower;
+    final dotPaint = Paint()..color = tank.color.withValues(alpha: 0.45);
+
+    for (int step = 0; step < 28; step++) {
+      vy += gravity * 0.03;
+      px += vx * 0.03;
+      py += vy * 0.03;
+      if (px < 0 || px > size.x || py > size.y || py >= _getTerrainY(px)) {
+        break;
+      }
+      if (step.isEven) {
+        canvas.drawCircle(Offset(px, py), 2.2, dotPaint);
+      }
+    }
+  }
+
+  void _renderHud(Canvas canvas) {
+    final banner = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.x / 2 - 200, 16, 400, 64),
+      const Radius.circular(18),
+    );
+    canvas.drawRRect(
+      banner,
+      Paint()..color = Colors.black.withValues(alpha: 0.24),
+    );
+
+    _paintText(
+      canvas,
+      'Terrain ${_terrainVariantIndex + 1}  |  First to $targetHitsToWin hits',
+      Offset(size.x / 2, 24),
+      const TextStyle(
+        color: Colors.white70,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+      centered: true,
+    );
+
+    final activeColor = players[currentPlayer].color;
+    final turnText = switch (_turnPhase) {
+      _TurnPhase.selectDirection =>
+        'P${currentPlayer + 1}: tap to lock direction',
+      _TurnPhase.selectPower => 'P${currentPlayer + 1}: tap to lock power',
+      _TurnPhase.projectileInFlight => 'P${currentPlayer + 1}: shot in flight',
+      _TurnPhase.gameOver => 'Game Over',
+    };
+    _paintText(
+      canvas,
+      turnText,
+      Offset(size.x / 2, 44),
+      TextStyle(color: activeColor, fontSize: 16, fontWeight: FontWeight.bold),
+      centered: true,
+    );
+
+    final leftLabel = 'P1 ${_hits[0]}/$targetHitsToWin';
+    final rightLabel = 'P2 ${_hits[1]}/$targetHitsToWin';
+    _paintText(
+      canvas,
+      leftLabel,
+      const Offset(24, 24),
+      TextStyle(
+        color: players[0].color,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+    _paintText(
+      canvas,
+      rightLabel,
+      Offset(size.x - 24, 24),
+      TextStyle(
+        color: players[1].color,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+      centered: false,
+      alignRight: true,
+    );
+
+    if (_turnPhase == _TurnPhase.selectPower) {
+      final width = 180.0;
+      final left = size.x / 2 - width / 2;
+      final progress = (_selectedPower - minPower) / (maxPower - minPower);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, 90, width, 12),
+          const Radius.circular(8),
+        ),
+        Paint()..color = Colors.white.withValues(alpha: 0.14),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, 90, width * progress, 12),
+          const Radius.circular(8),
+        ),
+        Paint()..color = activeColor,
+      );
+      _paintText(
+        canvas,
+        'Power ${(progress * 100).round()}%',
+        Offset(size.x / 2, 108),
+        const TextStyle(
+          color: Colors.white70,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        centered: true,
+      );
+    }
+  }
+
+  void _paintText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    TextStyle style, {
+    bool centered = false,
+    bool alignRight = false,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    double dx = offset.dx;
+    if (centered) {
+      dx -= painter.width / 2;
+    } else if (alignRight) {
+      dx -= painter.width;
+    }
+    painter.paint(canvas, Offset(dx, offset.dy));
+  }
+
+  static const List<List<double>> _terrainPresets = [
+    [0.72, 0.68, 0.64, 0.61, 0.59, 0.58, 0.6, 0.64, 0.67, 0.7, 0.73],
+    [0.69, 0.65, 0.6, 0.55, 0.56, 0.61, 0.66, 0.68, 0.65, 0.61, 0.58],
+    [0.63, 0.61, 0.58, 0.55, 0.57, 0.63, 0.69, 0.71, 0.68, 0.63, 0.6],
+    [0.7, 0.69, 0.67, 0.64, 0.59, 0.53, 0.56, 0.62, 0.67, 0.71, 0.74],
+    [0.6, 0.57, 0.55, 0.58, 0.63, 0.69, 0.67, 0.62, 0.58, 0.56, 0.59],
+    [0.73, 0.69, 0.63, 0.58, 0.55, 0.57, 0.61, 0.66, 0.7, 0.72, 0.7],
+  ];
 }
 
-class _Tank extends PositionComponent {
-  final Color color;
-  final int playerId;
-  int lives;
-  bool alive = true;
-  bool facingRight;
-  double turretAngle;
+class _TankBattleLandscapeScope extends StatefulWidget {
+  const _TankBattleLandscapeScope({required this.child});
 
+  final Widget child;
+
+  @override
+  State<_TankBattleLandscapeScope> createState() =>
+      _TankBattleLandscapeScopeState();
+}
+
+class _TankBattleLandscapeScopeState extends State<_TankBattleLandscapeScope> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+enum _TurnPhase { selectDirection, selectPower, projectileInFlight, gameOver }
+
+class _Tank extends PositionComponent {
   _Tank({
     required Vector2 position,
     required this.color,
     required this.playerId,
-    required this.lives,
     required this.facingRight,
-  }) : turretAngle = facingRight ? -0.5 : pi + 0.5,
+  }) : turretAngle = facingRight ? -pi / 4 : -3 * pi / 4,
        super(position: position, anchor: Anchor.center);
+
+  final Color color;
+  final int playerId;
+  final bool facingRight;
+  double turretAngle;
 
   @override
   void render(Canvas canvas) {
-    if (!alive) return;
+    canvas.save();
 
-    // Tank body
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(-16, -6, 32, 14),
-        const Radius.circular(3),
+        const Rect.fromLTWH(-20, -12, 40, 16),
+        const Radius.circular(4),
       ),
       Paint()..color = color,
     );
 
-    // Tracks
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(-18, 6, 36, 6),
-        const Radius.circular(3),
+        const Rect.fromLTWH(-24, 2, 48, 10),
+        const Radius.circular(5),
       ),
-      Paint()..color = color.withValues(alpha: 0.6),
+      Paint()..color = const Color(0xFF30343F),
     );
 
-    // Turret dome
+    for (double x = -18; x <= 18; x += 9) {
+      canvas.drawCircle(Offset(x, 7), 3.4, Paint()..color = Colors.black54);
+    }
+
     canvas.drawCircle(
       const Offset(0, -4),
-      8,
-      Paint()..color = color.withValues(alpha: 0.9),
+      9,
+      Paint()..color = color.withValues(alpha: 0.95),
     );
 
-    // Turret barrel (follows aim angle)
     canvas.save();
     canvas.translate(0, -4);
     canvas.rotate(turretAngle);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        const Rect.fromLTWH(6, -2.5, 20, 5),
-        const Radius.circular(2),
+        const Rect.fromLTWH(5, -3, 26, 6),
+        const Radius.circular(3),
       ),
-      Paint()..color = color.withValues(alpha: 0.7),
+      Paint()..color = const Color(0xFF28323C),
     );
     canvas.restore();
 
-    // Glow
     canvas.drawCircle(
       Offset.zero,
-      20,
+      24,
       Paint()
-        ..color = color.withValues(alpha: 0.15)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+        ..color = color.withValues(alpha: 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
+
+    canvas.restore();
   }
 }
 
 class _Projectile extends PositionComponent {
-  Vector2 velocity;
-  final int ownerId;
-  final Color color;
-  final List<Vector2> trail = [];
-
   _Projectile({
     required Vector2 position,
     required this.velocity,
@@ -491,19 +685,52 @@ class _Projectile extends PositionComponent {
     required this.color,
   }) : super(position: position, anchor: Anchor.center);
 
+  Vector2 velocity;
+  final int ownerId;
+  final Color color;
+  final List<Vector2> trail = [];
+
   @override
   void render(Canvas canvas) {
-    canvas.drawCircle(Offset.zero, 5, Paint()..color = color);
+    canvas.drawCircle(Offset.zero, 5, Paint()..color = const Color(0xFF2F3640));
     canvas.drawCircle(
-      Offset.zero, 5,
+      Offset.zero,
+      3,
+      Paint()..color = Colors.white.withValues(alpha: 0.85),
+    );
+    canvas.drawCircle(
+      Offset.zero,
+      8,
       Paint()
-        ..color = color.withValues(alpha: 0.5)
+        ..color = color.withValues(alpha: 0.25)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
-    // Fire trail
+  }
+}
+
+class _Explosion extends PositionComponent {
+  _Explosion({required Vector2 position, required this.color})
+    : life = 0.32,
+      super(position: position, anchor: Anchor.center);
+
+  final Color color;
+  double life;
+
+  @override
+  void render(Canvas canvas) {
+    final progress = (1 - (life / 0.32)).clamp(0.0, 1.0);
+    final outerRadius = TankBattleGame.explosionRadius * (0.6 + progress * 0.7);
+    final innerRadius = outerRadius * 0.45;
+
     canvas.drawCircle(
-      Offset.zero, 3,
-      Paint()..color = Colors.white.withValues(alpha: 0.8),
+      Offset.zero,
+      outerRadius,
+      Paint()..color = Colors.orange.withValues(alpha: 0.32 * (1 - progress)),
+    );
+    canvas.drawCircle(
+      Offset.zero,
+      innerRadius,
+      Paint()..color = color.withValues(alpha: 0.85 * (1 - progress * 0.5)),
     );
   }
 }
