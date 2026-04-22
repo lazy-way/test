@@ -1,20 +1,27 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../app/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math';
 
-class HomeScreen extends StatefulWidget {
+import '../app/theme.dart';
+import '../core/audio/music_controller.dart';
+import '../core/providers/settings_provider.dart';
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AnimationController _floatController;
   late Animation<double> _pulseAnimation;
+  ProviderSubscription<Settings>? _settingsSubscription;
 
   @override
   void initState() {
@@ -32,10 +39,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _settingsSubscription = ref.listenManual<Settings>(settingsProvider, (
+      previous,
+      next,
+    ) {
+      unawaited(ref.read(musicControllerProvider).syncWithSettings());
+    });
+    unawaited(ref.read(musicControllerProvider).playHome());
   }
 
   @override
   void dispose() {
+    _settingsSubscription?.close();
     _pulseController.dispose();
     _floatController.dispose();
     super.dispose();
@@ -43,16 +59,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final soundEnabled = ref.watch(
+      settingsProvider.select((settings) => settings.soundEnabled),
+    );
+
     return Scaffold(
       body: Stack(
         children: [
           // Gradient background
-          Container(decoration: const BoxDecoration(gradient: AppTheme.homeGradient)),
+          Container(
+            decoration: const BoxDecoration(gradient: AppTheme.homeGradient),
+          ),
           // Floating shapes
-          ...List.generate(8, (i) => _FloatingShape(
-            controller: _floatController,
-            index: i,
-          )),
+          ...List.generate(
+            8,
+            (i) => _FloatingShape(controller: _floatController, index: i),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 12,
+            child: IconButton(
+              onPressed: () =>
+                  unawaited(ref.read(musicControllerProvider).toggleMute()),
+              icon: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  soundEnabled
+                      ? Icons.volume_up_rounded
+                      : Icons.volume_off_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
           // Content
           SafeArea(
             child: Center(
@@ -63,15 +107,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   // Title
                   Text(
                     'MINI GAMES',
-                    style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
+                    style: GoogleFonts.fredoka(
+                      fontWeight: FontWeight.w700,
                       fontSize: 42,
                       color: Colors.white,
                       letterSpacing: 4,
                       shadows: [
-                        const Shadow(
-                          color: Color(0x80FFFFFF),
-                          blurRadius: 20,
-                        ),
+                        const Shadow(color: Color(0x80FFFFFF), blurRadius: 20),
                       ],
                     ),
                   ),
@@ -101,7 +143,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFFFF4757).withValues(alpha: 0.4),
+                              color: const Color(
+                                0xFFFF4757,
+                              ).withValues(alpha: 0.4),
                               blurRadius: 30,
                               spreadRadius: 5,
                             ),
@@ -110,7 +154,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         child: Center(
                           child: Text(
                             'PLAY',
-                            style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
+                            style: GoogleFonts.fredoka(
+                              fontWeight: FontWeight.w700,
                               fontSize: 32,
                               color: Colors.white,
                               letterSpacing: 2,
@@ -124,7 +169,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   // Settings button
                   IconButton(
                     onPressed: () => context.push('/settings'),
-                    icon: const Icon(Icons.settings_rounded, color: Colors.white54, size: 32),
+                    icon: const Icon(
+                      Icons.settings_rounded,
+                      color: Colors.white54,
+                      size: 32,
+                    ),
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -169,7 +218,9 @@ class _FloatingShape extends StatelessWidget {
               height: size,
               decoration: BoxDecoration(
                 shape: index % 2 == 0 ? BoxShape.circle : BoxShape.rectangle,
-                borderRadius: index % 2 != 0 ? BorderRadius.circular(size * 0.2) : null,
+                borderRadius: index % 2 != 0
+                    ? BorderRadius.circular(size * 0.2)
+                    : null,
                 color: AppTheme.playerColors[index % 4],
               ),
             ),

@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/player.dart';
 import '../models/game_result.dart';
 import '../../app/theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../audio/music_controller.dart';
+import '../providers/settings_provider.dart';
 
-class GameWrapper extends StatefulWidget {
+class GameWrapper extends ConsumerStatefulWidget {
   final String gameName;
   final List<Player> players;
   final Widget Function(VoidCallback onGameEnd) gameBuilder;
@@ -19,15 +25,17 @@ class GameWrapper extends StatefulWidget {
   });
 
   @override
-  State<GameWrapper> createState() => _GameWrapperState();
+  ConsumerState<GameWrapper> createState() => _GameWrapperState();
 }
 
-class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin {
+class _GameWrapperState extends ConsumerState<GameWrapper>
+    with TickerProviderStateMixin {
   bool _showCountdown = true;
   bool _showResult = false;
   int _countdownValue = 3;
   late AnimationController _countdownAnimController;
   late Animation<double> _countdownScale;
+  ProviderSubscription<Settings>? _settingsSubscription;
 
   @override
   void initState() {
@@ -37,8 +45,18 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
       duration: const Duration(milliseconds: 500),
     );
     _countdownScale = Tween<double>(begin: 2.0, end: 1.0).animate(
-      CurvedAnimation(parent: _countdownAnimController, curve: Curves.elasticOut),
+      CurvedAnimation(
+        parent: _countdownAnimController,
+        curve: Curves.elasticOut,
+      ),
     );
+    _settingsSubscription = ref.listenManual<Settings>(settingsProvider, (
+      previous,
+      next,
+    ) {
+      unawaited(ref.read(musicControllerProvider).syncWithSettings());
+    });
+    unawaited(ref.read(musicControllerProvider).playGame());
     _startCountdown();
   }
 
@@ -67,7 +85,9 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    _settingsSubscription?.close();
     _countdownAnimController.dispose();
+    unawaited(ref.read(musicControllerProvider).stop());
     super.dispose();
   }
 
@@ -90,17 +110,20 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
                       scale: _countdownScale.value,
                       child: Text(
                         _countdownValue > 0 ? '$_countdownValue' : 'GO!',
-                        style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
+                        style: GoogleFonts.fredoka(
+                          fontWeight: FontWeight.w700,
                           fontSize: 96,
                           color: _countdownValue > 0
                               ? AppTheme.playerColors[3 - _countdownValue]
                               : const Color(0xFF2ED573),
                           shadows: [
                             Shadow(
-                              color: (_countdownValue > 0
-                                      ? AppTheme.playerColors[3 - _countdownValue]
-                                      : const Color(0xFF2ED573))
-                                  .withValues(alpha: 0.6),
+                              color:
+                                  (_countdownValue > 0
+                                          ? AppTheme.playerColors[3 -
+                                                _countdownValue]
+                                          : const Color(0xFF2ED573))
+                                      .withValues(alpha: 0.6),
                               blurRadius: 30,
                             ),
                           ],
@@ -124,7 +147,11 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
                     color: Colors.black45,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.pause_rounded, color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.pause_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ),
             ),
@@ -161,18 +188,31 @@ class _GameWrapperState extends State<GameWrapper> with TickerProviderStateMixin
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('PAUSED', style: AppTheme.titleStyle.copyWith(fontSize: 24)),
+        title: Text(
+          'PAUSED',
+          style: AppTheme.titleStyle.copyWith(fontSize: 24),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('RESUME', style: AppTheme.buttonStyle.copyWith(color: const Color(0xFF2ED573))),
+            child: Text(
+              'RESUME',
+              style: AppTheme.buttonStyle.copyWith(
+                color: const Color(0xFF2ED573),
+              ),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               Navigator.of(context).pop();
             },
-            child: Text('QUIT', style: AppTheme.buttonStyle.copyWith(color: const Color(0xFFFF4757))),
+            child: Text(
+              'QUIT',
+              style: AppTheme.buttonStyle.copyWith(
+                color: const Color(0xFFFF4757),
+              ),
+            ),
           ),
         ],
       ),
@@ -199,7 +239,8 @@ class _ResultOverlay extends StatefulWidget {
   State<_ResultOverlay> createState() => _ResultOverlayState();
 }
 
-class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProviderStateMixin {
+class _ResultOverlayState extends State<_ResultOverlay>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
@@ -211,9 +252,10 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _scaleAnim = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
-    );
+    _scaleAnim = Tween<double>(
+      begin: 0.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.3)),
     );
@@ -268,7 +310,11 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(soloSummary.icon, size: 72, color: soloSummary.color),
+                            Icon(
+                              soloSummary.icon,
+                              size: 72,
+                              color: soloSummary.color,
+                            ),
                             const SizedBox(height: 14),
                             Text(
                               soloSummary.title,
@@ -290,41 +336,43 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                               ),
                             ),
                             const SizedBox(height: 18),
-                            ...soloSummary.stats.map((stat) => Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 12,
+                            ...soloSummary.stats.map(
+                              (stat) => Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.08),
                                   ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    color: Colors.white.withValues(alpha: 0.05),
-                                    border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      stat.label,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: Colors.white60,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        stat.label,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: Colors.white60,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                    const Spacer(),
+                                    Text(
+                                      stat.value,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 15,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
                                       ),
-                                      const Spacer(),
-                                      Text(
-                                        stat.value,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 15,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 18),
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -341,7 +389,10 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                                       borderRadius: BorderRadius.circular(25),
                                     ),
                                   ),
-                                  child: Text('PLAY AGAIN', style: AppTheme.buttonStyle),
+                                  child: Text(
+                                    'PLAY AGAIN',
+                                    style: AppTheme.buttonStyle,
+                                  ),
                                 ),
                                 const SizedBox(width: 14),
                                 ElevatedButton(
@@ -356,7 +407,10 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                                       borderRadius: BorderRadius.circular(25),
                                     ),
                                   ),
-                                  child: Text('EXIT', style: AppTheme.buttonStyle),
+                                  child: Text(
+                                    'EXIT',
+                                    style: AppTheme.buttonStyle,
+                                  ),
                                 ),
                               ],
                             ),
@@ -400,7 +454,8 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                     const SizedBox(height: 16),
                     Text(
                       '${winner.name} Wins!',
-                      style: GoogleFonts.fredoka(fontWeight: FontWeight.w700,
+                      style: GoogleFonts.fredoka(
+                        fontWeight: FontWeight.w700,
                         fontSize: 36,
                         color: winner.color,
                         shadows: [
@@ -469,19 +524,28 @@ class _ResultOverlayState extends State<_ResultOverlay> with SingleTickerProvide
                           onPressed: widget.onPlayAgain,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2ED573),
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 14,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(25),
                             ),
                           ),
-                          child: Text('PLAY AGAIN', style: AppTheme.buttonStyle),
+                          child: Text(
+                            'PLAY AGAIN',
+                            style: AppTheme.buttonStyle,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton(
                           onPressed: widget.onExit,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF4757),
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 14,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(25),
                             ),

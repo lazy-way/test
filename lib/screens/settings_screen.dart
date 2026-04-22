@@ -24,7 +24,11 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     IconButton(
                       onPressed: () => context.pop(),
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 28),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                     ),
                     Expanded(
                       child: Text(
@@ -40,15 +44,17 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 40),
               _SettingsTile(
                 icon: Icons.volume_up_rounded,
-                title: 'Sound Effects',
+                title: 'Sound & Music',
                 value: settings.soundEnabled,
-                onChanged: (_) => ref.read(settingsProvider.notifier).toggleSound(),
+                onChanged: (_) =>
+                    ref.read(settingsProvider.notifier).toggleSound(),
               ),
               _SettingsTile(
                 icon: Icons.vibration_rounded,
                 title: 'Vibration',
                 value: settings.vibrationEnabled,
-                onChanged: (_) => ref.read(settingsProvider.notifier).toggleVibration(),
+                onChanged: (_) =>
+                    ref.read(settingsProvider.notifier).toggleVibration(),
               ),
               const Spacer(),
               Text(
@@ -94,13 +100,11 @@ class _SettingsTile extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white70, size: 24),
             const SizedBox(width: 16),
-            Expanded(
-              child: Text(title, style: AppTheme.bodyStyle),
-            ),
+            Expanded(child: Text(title, style: AppTheme.bodyStyle)),
             Switch(
               value: value,
               onChanged: onChanged,
-              activeColor: const Color(0xFF2ED573),
+              activeThumbColor: const Color(0xFF2ED573),
             ),
           ],
         ),
