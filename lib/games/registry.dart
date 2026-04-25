@@ -12,7 +12,6 @@ import 'color_match/color_match_game.dart';
 import 'micro_racers/micro_racers_game.dart';
 import 'fruit_slash/fruit_slash_game.dart';
 import 'memory_cards/memory_cards_game.dart';
-import 'block_stacker/block_stacker_game.dart';
 import 'boat_rush/boat_rush_game.dart';
 import 'skateboard_dash/skateboard_dash_game.dart';
 import 'basketball_hoops/basketball_hoops_game.dart';
@@ -141,16 +140,6 @@ class GameRegistry {
       accentColor: Color(0xFF6C5CE7),
     ),
     GameConfig(
-      id: 'block_stacker',
-      name: 'Block Stacker',
-      description: 'Stack blocks, build tall',
-      icon: Icons.view_column_rounded,
-      category: GameCategory.puzzle,
-      minPlayers: 1,
-      maxPlayers: 2,
-      accentColor: Color(0xFFFD79A8),
-    ),
-    GameConfig(
       id: 'sudoku',
       name: 'Sudoku',
       description: 'Solve a 9x9 logic grid',
@@ -212,8 +201,6 @@ class GameRegistry {
         return FruitSlashGame.widget(players: players);
       case 'memory_cards':
         return MemoryCardsGame.widget(players: players);
-      case 'block_stacker':
-        return BlockStackerGame.widget(players: players);
       case 'boat_rush':
         return BoatRushGame.widget(players: players);
       case 'skateboard_dash':

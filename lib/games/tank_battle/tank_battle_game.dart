@@ -22,7 +22,7 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
   static const double hitRadius = 28;
   static const double explosionRadius = 26;
   static const double craterRadius = 36;
-  static const double tankGroundOffset = 18;
+  static const double tankGroundOffset = 10;
   static const int targetHitsToWin = 3;
 
   final Random _random = Random();

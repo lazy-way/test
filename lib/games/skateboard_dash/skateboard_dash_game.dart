@@ -6,13 +6,17 @@ import '../../core/models/player.dart';
 import '../../core/widgets/game_wrapper.dart';
 
 class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
+  static const double _initialSpeed = 250;
+  static const double _maxSpeed = 420;
+  static const double _speedAcceleration = 18;
+
   final List<Player> players;
   final VoidCallback onGameEnd;
 
-  late List<_Skater> skaters;
-  final List<_DashObstacle> obstacles = [];
+  late List<_Skater> _skaters;
+  final List<_DashObstacle> _obstacles = [];
   double _spawnTimer = 0;
-  double _speed = 250;
+  double _speed = _initialSpeed;
   double _distance = 0;
   bool _gameOver = false;
   final Random _rng = Random();
@@ -25,7 +29,8 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       players: players,
       gameBuilder: (onEnd) => GameWidget(
         game: SkateboardDashGame(players: players, onGameEnd: onEnd),
-        backgroundBuilder: (context) => Container(color: const Color(0xFF1a1a2e)),
+        backgroundBuilder: (context) =>
+            Container(color: const Color(0xFF1a1a2e)),
       ),
     );
   }
@@ -35,7 +40,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
     await super.onLoad();
 
     final stripHeight = size.y / players.length;
-    skaters = List.generate(players.length, (i) {
+    _skaters = List.generate(players.length, (i) {
       // P1 (i=0) at bottom strip, P2 (i=1) at top strip
       final vi = players.length - 1 - i;
       return _Skater(
@@ -56,7 +61,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
     if (_gameOver) return;
 
     _distance += _speed * dt;
-    _speed += dt * 5; // Accelerate
+    _speed = min(_maxSpeed, _speed + _speedAcceleration * dt);
 
     // Spawn obstacles
     _spawnTimer += dt;
@@ -65,25 +70,30 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       final stripHeight = size.y / players.length;
       for (int i = 0; i < players.length; i++) {
         if (_rng.nextDouble() < 0.5) {
-          final vi = skaters[i].visualIndex;
-          obstacles.add(_DashObstacle(
-            position: Vector2(size.x + 20, stripHeight * vi + stripHeight * 0.7 - 10),
-            width: 15 + _rng.nextDouble() * 15,
-            height: 10 + _rng.nextDouble() * 20,
-            lane: i,
-          ));
+          final vi = _skaters[i].visualIndex;
+          _obstacles.add(
+            _DashObstacle(
+              position: Vector2(
+                size.x + 20,
+                stripHeight * vi + stripHeight * 0.7 - 10,
+              ),
+              width: 15 + _rng.nextDouble() * 15,
+              height: 10 + _rng.nextDouble() * 20,
+              lane: i,
+            ),
+          );
         }
       }
     }
 
     // Update obstacles
-    for (final obs in List.from(obstacles)) {
+    for (final obs in List.from(_obstacles)) {
       obs.position.x -= _speed * dt;
-      if (obs.position.x < -50) obstacles.remove(obs);
+      if (obs.position.x < -50) _obstacles.remove(obs);
     }
 
     // Update skaters
-    for (final skater in skaters) {
+    for (final skater in _skaters) {
       if (!skater.alive) continue;
 
       // Gravity
@@ -98,7 +108,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       }
 
       // Collision
-      for (final obs in obstacles) {
+      for (final obs in _obstacles) {
         if (obs.lane != skater.playerId) continue;
         if ((skater.position.x + 10 > obs.position.x) &&
             (skater.position.x - 10 < obs.position.x + obs.width) &&
@@ -114,14 +124,14 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
   }
 
   void _checkWin() {
-    final alive = skaters.where((s) => s.alive).toList();
+    final alive = _skaters.where((s) => s.alive).toList();
     if (alive.length <= 1) {
       _gameOver = true;
-      for (final s in skaters) {
+      for (final s in _skaters) {
         if (s.alive) s.distance = _distance;
       }
       for (int i = 0; i < players.length; i++) {
-        players[i].score = (skaters[i].distance / 100).round();
+        players[i].score = (_skaters[i].distance / 100).round();
       }
       onGameEnd();
     }
@@ -131,19 +141,26 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
   void onTapDown(int pointerId, TapDownInfo info) {
     if (_gameOver) return;
     final pos = info.eventPosition.global;
-    final stripHeight = size.y / players.length;
 
-    for (int i = 0; i < skaters.length; i++) {
-      if (!skaters[i].alive) continue;
-      final vi = skaters[i].visualIndex;
-      if (pos.y >= stripHeight * vi && pos.y < stripHeight * (vi + 1)) {
-        if (!skaters[i].isJumping) {
-          skaters[i].velocityY = -350;
-          skaters[i].isJumping = true;
-        }
-        break;
+    final tappedSkater = _skaterForTap(pos);
+    if (tappedSkater == null || tappedSkater.isJumping) {
+      return;
+    }
+
+    tappedSkater.velocityY = -350;
+    tappedSkater.isJumping = true;
+  }
+
+  _Skater? _skaterForTap(Vector2 pos) {
+    for (final skater in _skaters) {
+      if (!skater.alive) continue;
+      final laneTop = skater.stripTop;
+      final laneBottom = laneTop + skater.stripHeight;
+      if (pos.y >= laneTop && pos.y < laneBottom) {
+        return skater;
       }
     }
+    return null;
   }
 
   @override
@@ -153,7 +170,7 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
     final stripHeight = size.y / players.length;
 
     for (int pIdx = 0; pIdx < players.length; pIdx++) {
-      final skater = skaters[pIdx];
+      final skater = _skaters[pIdx];
       final vi = skater.visualIndex;
       final top = stripHeight * vi;
       // P2 (vi=0, top strip) gets rotated 180° for the facing player
@@ -178,7 +195,9 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       canvas.drawLine(
         Offset(0, top + stripHeight * 0.7 + 5),
         Offset(size.x, top + stripHeight * 0.7 + 5),
-        Paint()..color = Colors.white.withValues(alpha: 0.2)..strokeWidth = 2,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.2)
+          ..strokeWidth = 2,
       );
 
       // Moving ground dots
@@ -191,11 +210,16 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
       }
 
       // Obstacles for this player
-      for (final obs in obstacles) {
+      for (final obs in _obstacles) {
         if (obs.lane != pIdx) continue;
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(obs.position.x, obs.position.y, obs.width, obs.height),
+            Rect.fromLTWH(
+              obs.position.x,
+              obs.position.y,
+              obs.width,
+              obs.height,
+            ),
             const Radius.circular(3),
           ),
           Paint()..color = const Color(0xFFFF6B6B),
@@ -208,7 +232,11 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
         canvas.translate(skater.position.x, skater.position.y);
 
         // Body
-        canvas.drawCircle(const Offset(0, -10), 8, Paint()..color = skater.color);
+        canvas.drawCircle(
+          const Offset(0, -10),
+          8,
+          Paint()..color = skater.color,
+        );
         // Board
         canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -218,8 +246,16 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
           Paint()..color = Colors.white70,
         );
         // Wheels
-        canvas.drawCircle(const Offset(-6, 5), 2.5, Paint()..color = Colors.grey);
-        canvas.drawCircle(const Offset(6, 5), 2.5, Paint()..color = Colors.grey);
+        canvas.drawCircle(
+          const Offset(-6, 5),
+          2.5,
+          Paint()..color = Colors.grey,
+        );
+        canvas.drawCircle(
+          const Offset(6, 5),
+          2.5,
+          Paint()..color = Colors.grey,
+        );
 
         canvas.restore();
       }
@@ -273,5 +309,10 @@ class _DashObstacle {
   double height;
   int lane;
 
-  _DashObstacle({required this.position, required this.width, required this.height, required this.lane});
+  _DashObstacle({
+    required this.position,
+    required this.width,
+    required this.height,
+    required this.lane,
+  });
 }
