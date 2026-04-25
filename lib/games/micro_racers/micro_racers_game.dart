@@ -100,8 +100,8 @@ class MicroRacersGame extends FlameGame with MultiTouchDragDetector {
       final onGrass = (ellipseDist - 1.0).abs() > trackHalfWidth;
       car.onGrass = onGrass;
 
-      // Slow down on grass
-      final effectiveSpeed = onGrass ? car.speed * 0.5 : car.speed;
+      // Slow down on grass — 3× slower than normal.
+      final effectiveSpeed = onGrass ? car.speed / 3.0 : car.speed;
       if (movementInput.length2 > 0) {
         final delta = movementInput.normalized() * effectiveSpeed * dt;
         car.position += delta;

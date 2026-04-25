@@ -194,7 +194,10 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
   void _updateAimSweep() {
     if (_turnPhase == _TurnPhase.selectDirection) {
       final activeTank = _tanks[currentPlayer];
-      final minAngle = activeTank.facingRight ? -pi : 0.0;
+      // Both tanks sweep through the upper hemisphere (−π → 0).
+      // P1 (facing right) sweeps left→up→right; P2 (facing left) does the
+      // same so the cannon stays above-ground and aimed at the opponent.
+      const minAngle = -pi;
       final sweep = pi;
       final cycle = 2.2;
       final progress = (_phaseTimer % cycle) / cycle;
@@ -432,25 +435,47 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
       return;
     }
 
+    // Show only a short direction arrow from the barrel tip — no trajectory
+    // dots so the player cannot predict the landing spot.
     final tank = _tanks[currentPlayer];
     final direction = Vector2(cos(_selectedAngle), sin(_selectedAngle));
-    double px = tank.position.x + direction.x * barrelLength;
-    double py = tank.position.y + direction.y * barrelLength;
-    double vx = direction.x * _selectedPower;
-    double vy = direction.y * _selectedPower;
-    final dotPaint = Paint()..color = tank.color.withValues(alpha: 0.45);
+    final barrelTip = Offset(
+      tank.position.x + direction.x * barrelLength,
+      tank.position.y + direction.y * barrelLength,
+    );
+    final arrowEnd = Offset(
+      barrelTip.dx + direction.x * 36,
+      barrelTip.dy + direction.y * 36,
+    );
 
-    for (int step = 0; step < 28; step++) {
-      vy += gravity * 0.03;
-      px += vx * 0.03;
-      py += vy * 0.03;
-      if (px < 0 || px > size.x || py > size.y || py >= _getTerrainY(px)) {
-        break;
-      }
-      if (step.isEven) {
-        canvas.drawCircle(Offset(px, py), 2.2, dotPaint);
-      }
-    }
+    final paint = Paint()
+      ..color = tank.color.withValues(alpha: 0.75)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawLine(barrelTip, arrowEnd, paint);
+
+    // Small arrowhead
+    final perp = Offset(-direction.y, direction.x);
+    final tip = arrowEnd;
+    final base = Offset(
+      tip.dx - direction.x * 8 + perp.dx * 5,
+      tip.dy - direction.y * 8 + perp.dy * 5,
+    );
+    final base2 = Offset(
+      tip.dx - direction.x * 8 - perp.dx * 5,
+      tip.dy - direction.y * 8 - perp.dy * 5,
+    );
+    final arrowPath = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(base.dx, base.dy)
+      ..lineTo(base2.dx, base2.dy)
+      ..close();
+    canvas.drawPath(
+      arrowPath,
+      Paint()..color = tank.color.withValues(alpha: 0.75),
+    );
   }
 
   void _renderHud(Canvas canvas) {

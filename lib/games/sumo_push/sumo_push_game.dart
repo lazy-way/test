@@ -38,7 +38,7 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
     await super.onLoad();
 
     arenaCenter = Vector2(size.x / 2, size.y / 2);
-    arenaRadius = min(size.x, size.y) * 0.38;
+    arenaRadius = min(size.x, size.y) * 0.38 * 2.5;
 
     add(_Arena(center: arenaCenter, radius: arenaRadius));
 
@@ -152,9 +152,9 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
     final playerIdx = _dragToPlayer.remove(pointerId);
     if (playerIdx == null) return;
 
-    // Cap the fling velocity — max power raised 5x for harder hits.
+    // Cap the fling velocity.
     var vel = info.velocity;
-    final maxSpeed = 3000.0;
+    final maxSpeed = 6000.0;
     if (vel.length > maxSpeed) {
       vel = vel.normalized() * maxSpeed;
     }
