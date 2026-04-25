@@ -10,8 +10,8 @@ class MusicController {
 
   final Ref _ref;
 
-  static const String _homeAsset = 'audio/home_loop.wav';
-  static const String _gameAsset = 'audio/game_loop.wav';
+  static const String _homeAsset = 'home_loop.wav';
+  static const String _gameAsset = 'game_loop.wav';
 
   bool _initialized = false;
   MusicTrack _currentTrack = MusicTrack.none;
