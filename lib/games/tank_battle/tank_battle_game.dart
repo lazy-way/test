@@ -316,10 +316,13 @@ class TankBattleGame extends FlameGame with MultiTouchTapDetector {
 
   @override
   void render(Canvas canvas) {
-    super.render(canvas);
+    // Paint the world (sky, hills, terrain) BEFORE component rendering so
+    // tanks/projectiles/explosions draw on top of the ground instead of
+    // being hidden by it.
     _renderSky(canvas);
     _renderBackdrop(canvas);
     _renderTerrain(canvas);
+    super.render(canvas);
     _renderTrails(canvas);
     _renderAimPreview(canvas);
     _renderHud(canvas);
@@ -599,7 +602,15 @@ class _TankBattleLandscapeScopeState extends State<_TankBattleLandscapeScope> {
 
   @override
   void dispose() {
+    // Restore portrait both immediately and via a post-frame callback —
+    // the immediate call covers normal teardown, and the post-frame call
+    // covers the case where the pop transition animation is still in
+    // flight when this State disposes (some Android devices ignore
+    // orientation requests delivered mid-transition).
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    });
     super.dispose();
   }
 

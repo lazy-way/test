@@ -96,8 +96,9 @@ class SkateboardDashGame extends FlameGame with MultiTouchTapDetector {
     for (final skater in _skaters) {
       if (!skater.alive) continue;
 
-      // Gravity
-      if (skater.position.y < skater.groundY) {
+      // Gravity (runs while jumping; position starts at groundY so the
+      // strict "above ground" check would never fire on the first frame).
+      if (skater.isJumping) {
         skater.velocityY += 800 * dt;
         skater.position.y += skater.velocityY * dt;
         if (skater.position.y >= skater.groundY) {

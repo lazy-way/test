@@ -152,9 +152,9 @@ class SumoPushGame extends FlameGame with MultiTouchDragDetector {
     final playerIdx = _dragToPlayer.remove(pointerId);
     if (playerIdx == null) return;
 
-    // Cap the fling velocity — max power reduced to prevent one-shot kills
+    // Cap the fling velocity — max power raised 5x for harder hits.
     var vel = info.velocity;
-    final maxSpeed = 600.0;
+    final maxSpeed = 3000.0;
     if (vel.length > maxSpeed) {
       vel = vel.normalized() * maxSpeed;
     }
